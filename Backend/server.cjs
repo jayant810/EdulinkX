@@ -147,7 +147,7 @@ const pool = require("./db.cjs");
 
 
 // --- JWT helper ---
-const JWT_SECRET = process.env.JWT_SECRET || 'please_change_this_secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'jwtscrt';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 function signToken(user) {
