@@ -17,6 +17,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [activeRole, setActiveRole] = useState("student");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -34,9 +35,11 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       if (isSignUp && formData.password !== formData.confirmPassword) {
         toast.error("Passwords do not match");
+        setIsSubmitting(false);
         return;
       }
 
@@ -60,6 +63,7 @@ const Login = () => {
         const data = await res.json();
         if (!res.ok) {
           toast.error(data.error || "Signup failed");
+          setIsSubmitting(false);
           return;
         }
 
@@ -78,6 +82,7 @@ const Login = () => {
         const data = await res.json();
         if (!res.ok) {
           toast.error(data.error || "Login failed");
+          setIsSubmitting(false);
           return;
         }
 
@@ -88,6 +93,7 @@ const Login = () => {
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "An error occurred");
+      setIsSubmitting(false);
     }
   };
 
@@ -254,8 +260,18 @@ const Login = () => {
                     </div>
                   )}
 
-                  <Button type="submit" variant="hero" className="w-full">
-                    {isSignUp ? "Create Account" : "Login"}
+                  <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-current" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        {isSignUp ? "Creating Account..." : "Logging in..."}
+                      </span>
+                    ) : (
+                      isSignUp ? "Create Account" : "Login"
+                    )}
                   </Button>
                 </form>
               </CardContent>
