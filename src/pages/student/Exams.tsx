@@ -5,112 +5,52 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  User,
   Calendar,
-  BookOpen,
-  FileText,
-  GraduationCap,
-  TrendingUp,
-  CreditCard,
-  Bell,
-  MessageSquare,
-  Settings,
-  BarChart3,
   Clock,
   Play,
   CheckCircle2,
   AlertCircle,
+  FileText,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/auth/AuthProvider";
 
-const sidebarLinks = [
-  { icon: BarChart3, label: "Dashboard", href: "/student/dashboard" },
-  { icon: User, label: "My Profile", href: "/student/profile" },
-  { icon: Calendar, label: "Attendance", href: "/student/attendance" },
-  { icon: BookOpen, label: "Courses", href: "/student/courses" },
-  { icon: FileText, label: "Assignments", href: "/student/assignments" },
-  { icon: GraduationCap, label: "Exams", href: "/student/exams" },
-  { icon: TrendingUp, label: "Grades", href: "/student/grades" },
-  { icon: CreditCard, label: "Fees", href: "/student/fees" },
-  { icon: Bell, label: "Notifications", href: "/student/notifications" },
-  { icon: MessageSquare, label: "Messages", href: "/student/messages" },
-  { icon: Settings, label: "Settings", href: "/student/settings" },
-];
-
-const upcomingExams = [
-  {
-    id: 1,
-    title: "Data Structures Mid-Term",
-    course: "CS301",
-    type: "mcq",
-    date: "Dec 15, 2024",
-    time: "10:00 AM",
-    duration: "2 hours",
-    questions: 50,
-  },
-  {
-    id: 2,
-    title: "Database Systems Quiz",
-    course: "CS302",
-    type: "mcq",
-    date: "Dec 12, 2024",
-    time: "2:00 PM",
-    duration: "1 hour",
-    questions: 25,
-  },
-  {
-    id: 3,
-    title: "Computer Networks Theory",
-    course: "CS303",
-    type: "pdf",
-    date: "Dec 18, 2024",
-    time: "9:00 AM",
-    duration: "3 hours",
-    questions: 8,
-  },
-];
-
-const completedExams = [
-  {
-    id: 4,
-    title: "Operating Systems Quiz 1",
-    course: "CS304",
-    type: "mcq",
-    date: "Dec 5, 2024",
-    marks: "45/50",
-    percentage: 90,
-    status: "passed",
-  },
-  {
-    id: 5,
-    title: "Software Engineering Mid-Term",
-    course: "CS305",
-    type: "short",
-    date: "Nov 28, 2024",
-    marks: "38/50",
-    percentage: 76,
-    status: "passed",
-  },
-  {
-    id: 6,
-    title: "Data Structures Lab Test",
-    course: "CS306",
-    type: "mcq",
-    date: "Nov 20, 2024",
-    marks: "28/30",
-    percentage: 93,
-    status: "passed",
-  },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const StudentExams = () => {
+  const { token } = useAuth();
+  const [upcomingExams, setUpcomingExams] = useState<any[]>([]);
+  const [completedExams, setCompletedExams] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_BASE}/api/student/exams/upcoming`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setUpcomingExams(Array.isArray(data) ? data : []));
+
+    // Simulated completed exams for now
+    setCompletedExams([
+      {
+        id: 4,
+        title: "Operating Systems Quiz 1",
+        course: "CS304",
+        type: "mcq",
+        date: "Dec 5, 2024",
+        marks: "45/50",
+        percentage: 90,
+        status: "passed",
+      }
+    ]);
+  }, [token]);
+
   return (
     <>
       <Helmet>
         <title>Exams - EdulinkX</title>
       </Helmet>
       <DashboardLayout
-        sidebarLinks={sidebarLinks}
-        userInfo={{ name: "John Smith", id: "STU2024001", initials: "JS" }}
         title="Exams"
         subtitle="View upcoming and completed exams"
       >
@@ -120,25 +60,13 @@ const StudentExams = () => {
             <Card variant="stat" className="border-l-warning">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Upcoming</p>
-                <p className="text-2xl font-bold font-display text-warning">3</p>
+                <p className="text-2xl font-bold font-display text-warning">{upcomingExams.length}</p>
               </CardContent>
             </Card>
             <Card variant="stat" className="border-l-success">
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Completed</p>
-                <p className="text-2xl font-bold font-display text-success">8</p>
-              </CardContent>
-            </Card>
-            <Card variant="stat" className="border-l-primary">
-              <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Avg. Score</p>
-                <p className="text-2xl font-bold font-display text-primary">86%</p>
-              </CardContent>
-            </Card>
-            <Card variant="stat" className="border-l-info">
-              <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Pass Rate</p>
-                <p className="text-2xl font-bold font-display text-info">100%</p>
+                <p className="text-2xl font-bold font-display text-success">{completedExams.length}</p>
               </CardContent>
             </Card>
           </div>
@@ -157,26 +85,9 @@ const StudentExams = () => {
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold">{exam.title}</h3>
-                            <Badge
-                              variant={
-                                exam.type === "mcq"
-                                  ? "info"
-                                  : exam.type === "short"
-                                  ? "accent"
-                                  : "secondary"
-                              }
-                            >
-                              {exam.type === "mcq"
-                                ? "MCQ"
-                                : exam.type === "short"
-                                ? "Short Answer"
-                                : "PDF Upload"}
-                            </Badge>
+                            <h3 className="text-lg font-semibold">{exam.subject}</h3>
+                            <Badge variant="info">{exam.type}</Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Course: {exam.course}
-                          </p>
                           <div className="flex flex-wrap gap-4 text-sm">
                             <div className="flex items-center gap-1">
                               <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -190,22 +101,21 @@ const StudentExams = () => {
                               <AlertCircle className="h-4 w-4 text-muted-foreground" />
                               <span>{exam.duration}</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <FileText className="h-4 w-4 text-muted-foreground" />
-                              <span>{exam.questions} Questions</span>
-                            </div>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <Button variant="outline">View Instructions</Button>
+                          <Button variant="outline">Instructions</Button>
                           <Button>
-                            <Play className="h-4 w-4 mr-1" /> Start Exam
+                            <Play className="h-4 w-4 mr-1" /> Start
                           </Button>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
+                {upcomingExams.length === 0 && (
+                  <p className="text-center text-muted-foreground py-8">No upcoming exams.</p>
+                )}
               </div>
             </TabsContent>
 
@@ -218,8 +128,6 @@ const StudentExams = () => {
                         <tr className="text-left text-sm text-muted-foreground border-b border-border">
                           <th className="p-4 font-medium">Exam</th>
                           <th className="p-4 font-medium">Course</th>
-                          <th className="p-4 font-medium">Type</th>
-                          <th className="p-4 font-medium">Date</th>
                           <th className="p-4 font-medium">Marks</th>
                           <th className="p-4 font-medium">Status</th>
                           <th className="p-4 font-medium">Action</th>
@@ -230,10 +138,6 @@ const StudentExams = () => {
                           <tr key={exam.id} className="border-b border-border last:border-0">
                             <td className="p-4 font-medium">{exam.title}</td>
                             <td className="p-4 text-muted-foreground">{exam.course}</td>
-                            <td className="p-4">
-                              <Badge variant="secondary">{exam.type.toUpperCase()}</Badge>
-                            </td>
-                            <td className="p-4 text-muted-foreground">{exam.date}</td>
                             <td className="p-4 font-medium">{exam.marks}</td>
                             <td className="p-4">
                               <Badge variant="success">
@@ -243,7 +147,7 @@ const StudentExams = () => {
                             </td>
                             <td className="p-4">
                               <Button variant="ghost" size="sm">
-                                View Results
+                                View
                               </Button>
                             </td>
                           </tr>

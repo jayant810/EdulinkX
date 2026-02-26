@@ -12,8 +12,8 @@ import { toast } from "sonner";
 
 const contactInfo = [
   { icon: Mail, label: "Email", value: "contact@edulinkx.edu" },
-  { icon: Phone, label: "Phone", value: "+1 (555) 123-4567" },
-  { icon: MapPin, label: "Address", value: "123 Education Street, Learning City, LC 12345" },
+  { icon: Phone, label: "Phone", value: "+91 1234567890" },
+  { icon: MapPin, label: "Address", value: "Kolkata, West Bengal" },
   { icon: Clock, label: "Hours", value: "Mon - Fri: 9:00 AM - 6:00 PM" },
 ];
 
@@ -132,7 +132,7 @@ const Contact = () => {
                         <Input
                           id="name"
                           name="name"
-                          placeholder="John Smith"
+                          placeholder="ABCD EFGH"
                           required
                           value={formData.name}
                           onChange={handleChange}
@@ -144,7 +144,7 @@ const Contact = () => {
                           id="email"
                           name="email"
                           type="email"
-                          placeholder="john@college.edu"
+                          placeholder="ABCD@email.com"
                           required
                           value={formData.email}
                           onChange={handleChange}
@@ -159,7 +159,7 @@ const Contact = () => {
                           id="phone"
                           name="phone"
                           type="tel"
-                          placeholder="+1 (555) 123-4567"
+                          placeholder="+91 1234567890"
                           value={formData.phone}
                           onChange={handleChange}
                         />
@@ -226,7 +226,7 @@ const Contact = () => {
           <div className="bg-sidebar rounded-2xl p-8 text-center text-sidebar-foreground">
             <h2 className="text-2xl font-bold font-display mb-4">Visit Our Office</h2>
             <p className="text-sidebar-foreground/70 mb-2">
-              123 Education Street, Learning City, LC 12345
+              Kolkata, West Bengal
             </p>
             <p className="text-sm text-sidebar-foreground/50">
               Available for in-person demos by appointment

@@ -1,0 +1,31 @@
+#root {
+  min-height: 100vh;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.app-shell {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.content-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  transition: color 150ms ease, opacity 150ms ease;
+}
+
+a:hover {
+  color: hsl(var(--primary-foreground));
+  opacity: 0.85;
+}
+
+.muted {
+  color: hsl(var(--muted-foreground));
+}

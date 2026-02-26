@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { GraduationCap, LogOut, Menu, X } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
+import { useSidebarLinks } from "@/hooks/useSidebarLinks";
+import { useUserInfo } from "@/hooks/useUserInfo";
+import { useAuth } from "@/auth/AuthProvider";
 
 interface SidebarLink {
   icon: LucideIcon;
@@ -13,8 +16,8 @@ interface SidebarLink {
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
-  sidebarLinks: SidebarLink[];
-  userInfo: {
+  sidebarLinks?: SidebarLink[];
+  userInfo?: {
     name: string;
     id: string;
     initials: string;
@@ -28,14 +31,22 @@ interface DashboardLayoutProps {
 
 export const DashboardLayout = ({
   children,
-  sidebarLinks,
-  userInfo,
+  sidebarLinks: customSidebarLinks,
+  userInfo: customUserInfo,
   title,
   subtitle,
   headerActions,
 }: DashboardLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  
+  const defaultSidebarLinks = useSidebarLinks();
+  const defaultUserInfo = useUserInfo();
+
+  const sidebarLinks = customSidebarLinks || defaultSidebarLinks;
+  const userInfo = customUserInfo || defaultUserInfo;
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -102,13 +113,16 @@ export const DashboardLayout = ({
 
           {/* Logout */}
           <div className="p-4 border-t border-sidebar-border">
-            <Link
-              to="/login"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+            <button
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors w-full text-left"
             >
               <LogOut className="h-4 w-4" />
               Logout
-            </Link>
+            </button>
           </div>
         </div>
       </aside>

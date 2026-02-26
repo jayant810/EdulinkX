@@ -63,12 +63,12 @@ const Login = () => {
           return;
         }
 
-        // Use AuthProvider to set token & user in context
         login(data.token, data.user);
         toast.success("Account created successfully!");
+        redirectUser(data.user);
 
       } else {
-        const payload = { email: formData.email, password: formData.password, role: activeRole };
+        const payload = { email: formData.email, password: formData.password };
         const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -81,28 +81,21 @@ const Login = () => {
           return;
         }
 
-        // Use AuthProvider to set token & user in context
         login(data.token, data.user);
         toast.success("Login successful!");
+        redirectUser(data.user);
       }
-
-      // Redirect based on role (use the user from context via localStorage fallback)
-      // AuthProvider persisted user -> we can rely on localStorage or data above.
-      // Prefer the user we just obtained from API (data.user), but safe fallback:
-      const storedUser = JSON.parse(localStorage.getItem("edulinkx_user") || "null");
-      const user = storedUser ?? (isSignUp ? null : null); // stored by AuthProvider effect
-
-      // If login() updated context, navigate based on the user it set.
-      // But since login() writes to localStorage, read it here to be safe:
-      const maybeUser = user ?? JSON.parse(window.localStorage.getItem("edulinkx_user") || "null");
-
-      if (maybeUser?.role === "student") navigate("/student/dashboard");
-      else if (maybeUser?.role === "teacher") navigate("/teacher/dashboard");
-      else navigate("/admin/dashboard");
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "An error occurred");
     }
+  };
+
+  const redirectUser = (user: any) => {
+    if (user?.role === "student") navigate("/student/dashboard");
+    else if (user?.role === "teacher") navigate("/teacher/dashboard");
+    else if (user?.role === "admin") navigate("/admin/dashboard");
+    else navigate("/");
   };
 
   const roleConfig = {
@@ -136,13 +129,16 @@ const Login = () => {
   };
 
   const currentRole = roleConfig[activeRole as keyof typeof roleConfig];
-  const IconComponent = currentRole.icon;
+  const IconComponent = isSignUp ? currentRole.icon : GraduationCap;
+  const portalTitle = isSignUp ? currentRole.title : "Nexus Portal";
+  const portalDesc = isSignUp ? currentRole.description : "Access your academic workspace";
+  const accentColor = isSignUp ? currentRole.color : "primary";
 
   return (
     <>
       <Helmet>
         <title>{isSignUp ? "Sign Up" : "Login"} - EdulinkX</title>
-        <meta name="description" content="Access your EdulinkX account. Login as student, teacher, or administrator." />
+        <meta name="description" content="Access your EdulinkX account. Unified login for students, teachers, and administrators." />
       </Helmet>
 
       <section className="min-h-screen py-20 flex items-center justify-center">
@@ -169,31 +165,33 @@ const Login = () => {
 
             <Card className="shadow-xl">
               <CardHeader className="text-center pb-4">
-                <div className={`w-16 h-16 rounded-full bg-${currentRole.color}/10 flex items-center justify-center mx-auto mb-4`}>
-                  <IconComponent className={`h-8 w-8 text-${currentRole.color}`} />
+                <div className={`w-16 h-16 rounded-full bg-${accentColor}/10 flex items-center justify-center mx-auto mb-4`}>
+                  <IconComponent className={`h-8 w-8 text-${accentColor}`} />
                 </div>
-                <CardTitle className="text-2xl font-display">{currentRole.title}</CardTitle>
-                <CardDescription>{currentRole.description}</CardDescription>
+                <CardTitle className="text-2xl font-display">{portalTitle}</CardTitle>
+                <CardDescription>{portalDesc}</CardDescription>
               </CardHeader>
 
               <CardContent className="space-y-6">
-                {/* Role Tabs */}
-                <Tabs value={activeRole} onValueChange={setActiveRole}>
-                  <TabsList className="grid grid-cols-3 w-full">
-                    <TabsTrigger value="student" className="flex items-center gap-1">
-                      <GraduationCap className="h-4 w-4" />
-                      <span className="hidden sm:inline">Student</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="teacher" className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      <span className="hidden sm:inline">Teacher</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="admin" className="flex items-center gap-1">
-                      <Settings className="h-4 w-4" />
-                      <span className="hidden sm:inline">Admin</span>
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                {/* Role Tabs - Only show during Signup */}
+                {isSignUp && (
+                  <Tabs value={activeRole} onValueChange={setActiveRole}>
+                    <TabsList className="grid grid-cols-3 w-full">
+                      <TabsTrigger value="student" className="flex items-center gap-1">
+                        <GraduationCap className="h-4 w-4" />
+                        <span className="hidden sm:inline">Student</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="teacher" className="flex items-center gap-1">
+                        <Users className="h-4 w-4" />
+                        <span className="hidden sm:inline">Teacher</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="admin" className="flex items-center gap-1">
+                        <Settings className="h-4 w-4" />
+                        <span className="hidden sm:inline">Admin</span>
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                )}
 
                 {/* Login/Signup Toggle */}
                 <div className="flex items-center justify-center gap-2 text-sm">

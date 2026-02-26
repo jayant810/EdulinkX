@@ -7,17 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  User,
   Calendar,
-  BookOpen,
-  FileText,
-  GraduationCap,
-  TrendingUp,
-  CreditCard,
-  Bell,
-  MessageSquare,
-  Settings,
-  BarChart3,
   Upload,
   CheckCircle2,
   ChevronLeft,
@@ -25,20 +15,6 @@ import {
   X,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-
-const sidebarLinks = [
-  { icon: BarChart3, label: "Dashboard", href: "/student/dashboard" },
-  { icon: User, label: "My Profile", href: "/student/profile" },
-  { icon: Calendar, label: "Attendance", href: "/student/attendance" },
-  { icon: BookOpen, label: "Courses", href: "/student/courses" },
-  { icon: FileText, label: "Assignments", href: "/student/assignments" },
-  { icon: GraduationCap, label: "Exams", href: "/student/exams" },
-  { icon: TrendingUp, label: "Grades", href: "/student/grades" },
-  { icon: CreditCard, label: "Fees", href: "/student/fees" },
-  { icon: Bell, label: "Notifications", href: "/student/notifications" },
-  { icon: MessageSquare, label: "Messages", href: "/student/messages" },
-  { icon: Settings, label: "Settings", href: "/student/settings" },
-];
 
 const assignmentDetails = {
   id: 1,
@@ -80,8 +56,6 @@ const SubmitAssignment = () => {
           <title>Assignment Submitted - EdulinkX</title>
         </Helmet>
         <DashboardLayout
-          sidebarLinks={sidebarLinks}
-          userInfo={{ name: "John Smith", id: "STU2024001", initials: "JS" }}
           title="Assignment Submitted"
           subtitle="Your work has been submitted successfully"
         >
@@ -116,8 +90,6 @@ const SubmitAssignment = () => {
         <title>Submit Assignment - EdulinkX</title>
       </Helmet>
       <DashboardLayout
-        sidebarLinks={sidebarLinks}
-        userInfo={{ name: "John Smith", id: "STU2024001", initials: "JS" }}
         title="Submit Assignment"
         subtitle={assignmentDetails.title}
         headerActions={

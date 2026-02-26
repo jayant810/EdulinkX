@@ -25,8 +25,8 @@ const AdminFees = () => (
     <DashboardLayout sidebarLinks={sidebarLinks} userInfo={{ name: "Admin User", id: "Super Admin", initials: "AD", gradientFrom: "from-warning", gradientTo: "to-destructive" }} title="Fee Management" subtitle="Track and manage student fees">
       <div className="space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card variant="stat" className="border-l-success"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Total Collected</p><p className="text-2xl font-bold text-success">$2.4M</p></CardContent></Card>
-          <Card variant="stat" className="border-l-warning"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Pending</p><p className="text-2xl font-bold text-warning">$180K</p></CardContent></Card>
+          <Card variant="stat" className="border-l-success"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Total Collected</p><p className="text-2xl font-bold text-success">₹2.4M</p></CardContent></Card>
+          <Card variant="stat" className="border-l-warning"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Pending</p><p className="text-2xl font-bold text-warning">₹180K</p></CardContent></Card>
           <Card variant="stat" className="border-l-primary"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Collection Rate</p><p className="text-2xl font-bold text-primary">92%</p></CardContent></Card>
           <Card variant="stat" className="border-l-destructive"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Defaulters</p><p className="text-2xl font-bold text-destructive">48</p></CardContent></Card>
         </div>

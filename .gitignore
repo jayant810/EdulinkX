@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Project specific ignores
+*.zip
+Backend/node_modules/
+Backend/public/uploads/

@@ -54,11 +54,11 @@ export function Footer() {
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="h-4 w-4 text-primary" />
-                <span>+1 (555) 123-4567</span>
+                <span>+91 1234567890</span>
               </div>
               <div className="flex items-center gap-3">
                 <MapPin className="h-4 w-4 text-primary" />
-                <span>123 Education Street, Learning City</span>
+                <span>Kolkata, West Bengal</span>
               </div>
             </div>
           </div>

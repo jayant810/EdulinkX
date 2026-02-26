@@ -30,6 +30,7 @@ import StudentFees from "./pages/student/Fees";
 import StudentNotifications from "./pages/student/Notifications";
 import StudentMessages from "./pages/student/Messages";
 import StudentSettings from "./pages/student/Settings";
+import StudentCoursePlayer from "@/pages/student/StudentCoursePlayer";
 
 // Teacher Pages
 import TeacherDashboard from "./pages/teacher/Dashboard";
@@ -44,6 +45,7 @@ import TeacherMaterials from "./pages/teacher/Materials";
 import TeacherAnnouncements from "./pages/teacher/Announcements";
 import TeacherMessages from "./pages/teacher/Messages";
 import TeacherSettings from "./pages/teacher/Settings";
+import ManageCourse from "@/pages/teacher/ManageCourse";
 
 // Admin Pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -60,6 +62,13 @@ import AdminSettings from "./pages/admin/Settings";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { CommunityStoreProvider } from "./lib/communityStore";
+
+// Community Pages
+import CommunityFeed from "./pages/shared/CommunityFeed";
+import AskQuestion from "./pages/shared/AskQuestion";
+import QuestionDetail from "./pages/shared/QuestionDetail";
+import Leaderboard from "./pages/shared/Leaderboard";
 
 const queryClient = new QueryClient();
 
@@ -84,20 +93,55 @@ const App = () => (
         <Sonner />
 
         <AuthProvider>
-          <BrowserRouter>
-            <Routes>
-              {/* Public Routes */}
-              <Route element={<PublicLayout />}>
-                <Route path="/" element={<Index />} />
-                <Route path="/features" element={<Features />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/contact" element={<Contact />} />
-              </Route>
+          <CommunityStoreProvider>
+            <BrowserRouter>
+              <Routes>
+                {/* Public Routes */}
+                <Route element={<PublicLayout />}>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/features" element={<Features />} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="/contact" element={<Contact />} />
+                </Route>
 
-              {/* Login (auto-redirect if already logged in) */}
-              <Route path="/login" element={<LoginRouteWrapper />} />
+                {/* Login (auto-redirect if already logged in) */}
+                <Route path="/login" element={<LoginRouteWrapper />} />
 
-              {/* STUDENT PORTAL (protected: student only) */}
+                {/* COMMUNITY (protected: all roles) */}
+                <Route
+                  path="/community"
+                  element={
+                    <ProtectedRoute allowedRoles={["student", "teacher", "admin"]}>
+                      <CommunityFeed />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/community/ask"
+                  element={
+                    <ProtectedRoute allowedRoles={["student", "teacher", "admin"]}>
+                      <AskQuestion />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/community/q/:slug"
+                  element={
+                    <ProtectedRoute allowedRoles={["student", "teacher", "admin"]}>
+                      <QuestionDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/community/leaderboard"
+                  element={
+                    <ProtectedRoute allowedRoles={["student", "teacher", "admin"]}>
+                      <Leaderboard />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* STUDENT PORTAL (protected: student only) */}
               <Route
                 path="/student/dashboard"
                 element={
@@ -398,13 +442,21 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route 
+                path="/student/course/:courseId" 
+                element={<StudentCoursePlayer />} 
+              />
+              <Route 
+              path="/teacher/courses/:courseId" 
+              element={<ManageCourse />} 
+              />
 
-              {/* 404 */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </TooltipProvider>
+                              {/* 404 */}
+                              <Route path="*" element={<NotFound />} />
+                            </Routes>
+                          </BrowserRouter>
+                        </CommunityStoreProvider>
+                      </AuthProvider>      </TooltipProvider>
     </QueryClientProvider>
   </HelmetProvider>
 );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,62 +7,113 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import {
-  BarChart3,
-  Users,
-  BookOpen,
-  Calendar,
-  FileText,
-  GraduationCap,
-  ClipboardCheck,
-  Upload,
-  Bell,
-  MessageSquare,
-  Settings,
   CheckCircle2,
   XCircle,
   Save,
 } from "lucide-react";
+import { useAuth } from "@/auth/AuthProvider";
+import { toast } from "sonner";
 
-const sidebarLinks = [
-  { icon: BarChart3, label: "Dashboard", href: "/teacher/dashboard" },
-  { icon: Users, label: "My Students", href: "/teacher/students" },
-  { icon: BookOpen, label: "Courses", href: "/teacher/courses" },
-  { icon: Calendar, label: "Attendance", href: "/teacher/attendance" },
-  { icon: FileText, label: "Assignments", href: "/teacher/assignments" },
-  { icon: GraduationCap, label: "Exams", href: "/teacher/exams" },
-  { icon: ClipboardCheck, label: "Grading", href: "/teacher/grading" },
-  { icon: Upload, label: "Materials", href: "/teacher/materials" },
-  { icon: Bell, label: "Announcements", href: "/teacher/announcements" },
-  { icon: MessageSquare, label: "Messages", href: "/teacher/messages" },
-  { icon: Settings, label: "Settings", href: "/teacher/settings" },
-];
-
-const studentsForAttendance = [
-  { id: "STU2024001", name: "Alice Johnson", rollNo: 1 },
-  { id: "STU2024002", name: "Bob Smith", rollNo: 2 },
-  { id: "STU2024003", name: "Carol White", rollNo: 3 },
-  { id: "STU2024004", name: "David Brown", rollNo: 4 },
-  { id: "STU2024005", name: "Emma Davis", rollNo: 5 },
-  { id: "STU2024006", name: "Frank Miller", rollNo: 6 },
-  { id: "STU2024007", name: "Grace Wilson", rollNo: 7 },
-  { id: "STU2024008", name: "Henry Taylor", rollNo: 8 },
-];
-
-const attendanceHistory = [
-  { date: "Dec 9, 2024", course: "Data Structures", section: "CS-A", present: 42, absent: 3, percentage: 93 },
-  { date: "Dec 8, 2024", course: "Algorithms", section: "CS-B", present: 38, absent: 4, percentage: 90 },
-  { date: "Dec 7, 2024", course: "Data Structures", section: "CS-A", present: 44, absent: 1, percentage: 98 },
-  { date: "Dec 6, 2024", course: "Data Structures Lab", section: "CS-A", present: 40, absent: 5, percentage: 89 },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const TeacherAttendance = () => {
-  const [attendance, setAttendance] = useState<Record<string, boolean>>(
-    Object.fromEntries(studentsForAttendance.map(s => [s.id, true]))
-  );
+  const { token } = useAuth();
+  const [courses, setCourses] = useState([]);
+  const [selectedCourse, setSelectedCourse] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [students, setStudents] = useState([]);
+  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    // Load courses
+    fetch(`${API_BASE}/api/teacher/courses`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setCourses(data);
+        if (data.length > 0) {
+          const firstCourseId = String(data[0].id);
+          setSelectedCourse(firstCourseId);
+        }
+      });
+
+    // Load history
+    fetch(`${API_BASE}/api/teacher/attendance/history`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setHistory(Array.isArray(data) ? data : []));
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !selectedCourse || !selectedDate) {
+      setStudents([]);
+      return;
+    }
+    // Load students and existing records for selected course and date
+    fetch(`${API_BASE}/api/teacher/courses/${selectedCourse}/students?date=${selectedDate}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        const studentList = data.students || [];
+        setStudents(studentList);
+        // If existing records found, use them; otherwise default to all present
+        if (data.existingRecords && Object.keys(data.existingRecords).length > 0) {
+          setAttendance(data.existingRecords);
+        } else {
+          setAttendance(Object.fromEntries(studentList.map((s: any) => [s.id, true])));
+        }
+      })
+      .catch(err => {
+        console.error("Error loading students:", err);
+        setStudents([]);
+      });
+  }, [selectedCourse, selectedDate, token]);
 
   const handleToggle = (id: string) => {
     setAttendance(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleSubmitAttendance = async () => {
+    if (!selectedCourse || !selectedDate) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/attendance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          courseId: selectedCourse,
+          date: selectedDate,
+          records: attendance
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to submit");
+
+      toast.success("Attendance updated successfully");
+      
+      // Refresh history
+      fetch(`${API_BASE}/api/teacher/attendance/history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(setHistory);
+        
+    } catch (err) {
+      toast.error("Error submitting attendance");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const presentCount = Object.values(attendance).filter(Boolean).length;
@@ -74,8 +125,6 @@ const TeacherAttendance = () => {
         <title>Attendance - EdulinkX</title>
       </Helmet>
       <DashboardLayout
-        sidebarLinks={sidebarLinks}
-        userInfo={{ name: "Dr. Patricia Lee", id: "FAC2024001", initials: "PL", gradientFrom: "from-accent", gradientTo: "to-primary" }}
         title="Attendance"
         subtitle="Mark and manage class attendance"
       >
@@ -92,25 +141,31 @@ const TeacherAttendance = () => {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <CardTitle>Mark Attendance</CardTitle>
                     <div className="flex flex-wrap gap-3">
-                      <Select defaultValue="cs301">
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Select Course" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cs301">CS301 - Data Structures</SelectItem>
-                          <SelectItem value="cs302">CS302 - Algorithms</SelectItem>
-                          <SelectItem value="cs301l">CS301L - DS Lab</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Select defaultValue="cs-a">
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue placeholder="Section" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="cs-a">CS-A</SelectItem>
-                          <SelectItem value="cs-b">CS-B</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-muted-foreground">Select Course</label>
+                        <Select value={selectedCourse} onValueChange={(val) => setSelectedCourse(val)}>
+                          <SelectTrigger className="w-[250px]">
+                            <SelectValue placeholder="Select Course" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {courses.map((c: any) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.course_code || c.code} - {c.course_name || c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-muted-foreground">Select Date</label>
+                        <Input 
+                          type="date" 
+                          className="w-[160px]" 
+                          value={selectedDate} 
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          max={new Date().toISOString().split('T')[0]}
+                        />
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -127,7 +182,7 @@ const TeacherAttendance = () => {
                   </div>
 
                   <div className="grid gap-2">
-                    {studentsForAttendance.map((student) => (
+                    {students.map((student: any) => (
                       <div
                         key={student.id}
                         className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
@@ -136,11 +191,11 @@ const TeacherAttendance = () => {
                       >
                         <div className="flex items-center gap-4">
                           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
-                            {student.rollNo}
+                            {student.roll_number || "—"}
                           </div>
                           <div>
                             <p className="font-medium">{student.name}</p>
-                            <p className="text-xs text-muted-foreground">{student.id}</p>
+                            <p className="text-xs text-muted-foreground">{student.student_id}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
@@ -148,18 +203,21 @@ const TeacherAttendance = () => {
                             {attendance[student.id] ? "Present" : "Absent"}
                           </Badge>
                           <Checkbox
-                            checked={attendance[student.id]}
+                            checked={attendance[student.id] || false}
                             onCheckedChange={() => handleToggle(student.id)}
                           />
                         </div>
                       </div>
                     ))}
+                    {students.length === 0 && (
+                      <p className="text-center text-muted-foreground py-8">No students found for this course.</p>
+                    )}
                   </div>
 
                   <div className="flex justify-end mt-6">
-                    <Button>
+                    <Button onClick={handleSubmitAttendance} disabled={loading || students.length === 0}>
                       <Save className="h-4 w-4 mr-2" />
-                      Submit Attendance
+                      {loading ? "Saving..." : "Save Attendance"}
                     </Button>
                   </div>
                 </CardContent>
@@ -178,29 +236,30 @@ const TeacherAttendance = () => {
                         <tr className="text-left text-sm text-muted-foreground border-b border-border">
                           <th className="pb-3 font-medium">Date</th>
                           <th className="pb-3 font-medium">Course</th>
-                          <th className="pb-3 font-medium">Section</th>
-                          <th className="pb-3 font-medium">Present</th>
-                          <th className="pb-3 font-medium">Absent</th>
-                          <th className="pb-3 font-medium">Percentage</th>
+                          <th className="pb-3 font-medium text-center">Present</th>
+                          <th className="pb-3 font-medium text-center">Absent</th>
+                          <th className="pb-3 font-medium text-center">Percentage</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {attendanceHistory.map((record, index) => (
+                        {history.map((record: any, index) => (
                           <tr key={index} className="border-b border-border last:border-0">
-                            <td className="py-4 font-medium">{record.date}</td>
+                            <td className="py-4 font-medium">{new Date(record.date).toLocaleDateString()}</td>
                             <td className="py-4 text-muted-foreground">{record.course}</td>
-                            <td className="py-4">
-                              <Badge variant="secondary">{record.section}</Badge>
-                            </td>
-                            <td className="py-4 text-success">{record.present}</td>
-                            <td className="py-4 text-destructive">{record.absent}</td>
-                            <td className="py-4">
+                            <td className="py-4 text-success text-center">{record.present}</td>
+                            <td className="py-4 text-destructive text-center">{record.absent}</td>
+                            <td className="py-4 text-center">
                               <Badge variant={record.percentage >= 85 ? "success" : "warning"}>
                                 {record.percentage}%
                               </Badge>
                             </td>
                           </tr>
                         ))}
+                        {history.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-12 text-center text-muted-foreground">No attendance history found.</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
