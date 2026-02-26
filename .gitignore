@@ -27,3 +27,8 @@ dist-ssr
 *.zip
 Backend/node_modules/
 Backend/public/uploads/
+
+# Python ignores
+.venv/
+__pycache__/
+*.pyc
