@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db.cjs");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID } = require("crypto");
 
 // Middleware to verify token is already applied in server.cjs
 // but we'll assume req.user is available.
@@ -33,7 +33,7 @@ module.exports = function(io) {
   router.post("/community/questions", async (req, res) => {
     const { title, body, tags } = req.body;
     const author_id = req.user.id;
-    const id = uuidv4();
+    const id = randomUUID();
     const slug = title.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-");
 
     try {
@@ -119,7 +119,7 @@ module.exports = function(io) {
     const { body } = req.body;
     const author_id = req.user.id;
     const question_id = req.params.id;
-    const id = uuidv4();
+    const id = randomUUID();
 
     try {
       await pool.execute(
