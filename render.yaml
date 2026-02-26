@@ -1,6 +1,7 @@
 services:
   - type: web
     name: edulinkx-backend
+    rootContext: Backend
     env: node
     plan: free
     buildCommand: npm install
