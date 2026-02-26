@@ -67,6 +67,9 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
      Keep localStorage in sync
   ------------------------------------------------------- */
   useEffect(() => {
+    // ✅ Do not sync to storage until hydration is finished
+    if (authLoading) return;
+
     try {
       if (token) localStorage.setItem(LOCAL_TOKEN_KEY, token);
       else localStorage.removeItem(LOCAL_TOKEN_KEY);
@@ -76,7 +79,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     } catch (err) {
       console.error("Auth storage sync failed:", err);
     }
-  }, [token, user]);
+  }, [token, user, authLoading]);
 
   /* -------------------------------------------------------
      Login

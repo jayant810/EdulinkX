@@ -25,10 +25,10 @@ router.get("/student/assignments/pending", async (req, res) => {
   try {
     const [rows] = await pool.execute(`
       SELECT 
-        a.id, a.title, a.type, a.description, a.total_marks as max_score,
+        a.id, a.title, a.type, a.description, a.max_score,
         c.course_name, c.course_code,
-        DATE_FORMAT(a.due_date,'%Y-%m-%d %H:%i') AS due_date,
-        DATEDIFF(a.due_date, NOW()) AS daysLeft
+        TO_CHAR(a.due_date,'YYYY-MM-DD HH24:MI') AS due_date,
+        DATE_PART('day', a.due_date - NOW()) AS daysLeft
       FROM assignments a
       JOIN courses c ON a.course_id = c.id
       JOIN course_students cs ON cs.course_id = c.id
@@ -52,7 +52,7 @@ router.get("/student/assignments/submitted", async (req, res) => {
     const [rows] = await pool.execute(`
       SELECT 
         s.id, a.title, c.course_name, c.course_code, s.status, s.score as total_score,
-        DATE_FORMAT(s.submitted_at,'%Y-%m-%d %H:%i') AS submitted_at
+        TO_CHAR(s.submitted_at,'YYYY-MM-DD HH24:MI') AS submitted_at
       FROM assignment_submissions s
       JOIN assignments a ON s.assignment_id = a.id
       JOIN courses c ON a.course_id = c.id
@@ -119,21 +119,21 @@ router.post("/assignments/:id/submit/short", async (req, res) => {
   const studentId = req.user.id;
   const { answers } = req.body; // { question_id: answer_text_or_option_index }
 
-  let connection;
+  const client = await pool.connect();
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
+    await client.query('BEGIN');
 
     // 1. Get assignment type
-    const [[assignment]] = await connection.execute("SELECT type FROM assignments WHERE id = ?", [assignmentId]);
+    const { rows: assignmentRows } = await client.query("SELECT type FROM assignments WHERE id = $1", [assignmentId]);
+    const assignment = assignmentRows[0];
     
     let totalScore = null;
     let status = 'submitted';
 
     // 2. Auto-grade if MCQ
     if (assignment.type === 'mcq') {
-      const [questions] = await connection.execute(
-        "SELECT id, correct_answer, marks FROM assignment_questions WHERE assignment_id = ?",
+      const { rows: questions } = await client.query(
+        "SELECT id, correct_answer, marks FROM assignment_questions WHERE assignment_id = $1",
         [assignmentId]
       );
 
@@ -148,19 +148,19 @@ router.post("/assignments/:id/submit/short", async (req, res) => {
     }
 
     // 3. Insert submission
-    await connection.execute(
-      "INSERT INTO assignment_submissions (assignment_id, student_user_id, submission_text, score, status) VALUES (?, ?, ?, ?, ?)",
+    await client.query(
+      "INSERT INTO assignment_submissions (assignment_id, student_user_id, submission_text, score, status) VALUES ($1, $2, $3, $4, $5)",
       [assignmentId, studentId, JSON.stringify(answers), totalScore, status]
     );
 
-    await connection.commit();
+    await client.query('COMMIT');
     res.status(201).json({ success: true, score: totalScore, status });
   } catch (err) {
-    if (connection) await connection.rollback();
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: "Server error" });
   } finally {
-    if (connection) connection.release();
+    client.release();
   }
 });
 

@@ -74,7 +74,15 @@ const queryClient = new QueryClient();
 
 /** Auto-redirect authenticated users away from /login */
 const LoginRouteWrapper: React.FC = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, authLoading } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (isAuthenticated && user) {
     if (user.role === "student") return <Navigate to="/student/dashboard" replace />;

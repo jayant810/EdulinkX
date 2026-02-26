@@ -49,10 +49,17 @@ const StudentProfile = () => {
   }
 
   if (!profile) {
-    return <div className="p-6 text-destructive text-center">Profile details not available. Please complete your registration.</div>;
+    return (
+      <DashboardLayout title="My Profile">
+        <div className="p-6 text-destructive text-center space-y-4">
+          <p className="text-xl font-bold">Profile details not found.</p>
+          <p>Please contact your administrator to set up your profile.</p>
+        </div>
+      </DashboardLayout>
+    );
   }
 
-  const initials = profile.full_name
+  const initials = (profile.full_name || profile.name || "U")
     ?.split(" ")
     .map((n: string) => n[0])
     .join("")
@@ -67,15 +74,22 @@ const StudentProfile = () => {
 
       <DashboardLayout
         title="My Profile"
-        subtitle="View and manage your profile information"
+        subtitle={profile.is_incomplete ? "Complete your registration" : "View and manage your profile information"}
         headerActions={
           <Button variant="outline" size="sm">
             <Edit className="h-4 w-4 mr-2" />
-            Edit Profile
+            {profile.is_incomplete ? "Setup Profile" : "Edit Profile"}
           </Button>
         }
       >
         <div className="space-y-6">
+          {profile.is_incomplete && (
+            <div className="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded-lg flex items-center gap-3">
+              <User className="h-5 w-5" />
+              <p className="font-medium">Your profile is incomplete. Please click 'Setup Profile' to add your details.</p>
+            </div>
+          )}
+
           {/* Profile Header */}
           <Card>
             <CardContent className="p-6">

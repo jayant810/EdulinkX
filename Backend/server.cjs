@@ -55,8 +55,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-// Explicitly using 'v1' version which is often more stable for these models
-const genAI = new GoogleGenerativeAI("AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
+
+// Function to get model with specific API version
+function getModel(modelName) {
+  return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
+}
 
 console.log("SERVER.CJS LOADED WITH WEBSOCKETS AND REDIS");
 
@@ -70,11 +74,11 @@ app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
 // AI Summary Route
 app.post('/api/ai/summarize', verifyToken, async (req, res) => {
   const { title, description } = req.body;
-  const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"];
+  const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"];
   
   for (const modelName of modelsToTry) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = getModel(modelName);
       const prompt = `Generate a concise, professional educational summary for a lecture titled "${title}" with description: "${description}". Keep it under 100 words. Focus on key learning outcomes.`;
       const result = await model.generateContent(prompt);
       const summary = result.response.text();
@@ -84,7 +88,9 @@ app.post('/api/ai/summarize', verifyToken, async (req, res) => {
     }
   }
   
-  res.status(500).json({ error: "Failed to generate AI summary with available models." });
+  // Fallback
+  const fallback = `This lecture on "${title}" covers key concepts and learning objectives. ${description ? description : ''}`;
+  res.json({ summary: fallback });
 });
 
 // Diagnostic: List Models
@@ -237,11 +243,11 @@ app.post('/api/auth/signup', async (req, res) => {
 
     const [result] = await pool.execute(
       `INSERT INTO users (name, email, password_hash, role, student_id, employee_code)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
       [name || null, email, password_hash, role, studentId || null, employeeCode || null]
     );
 
-    const userId = result.insertId;
+    const userId = result[0].id;
     const [rows] = await pool.execute('SELECT * FROM users WHERE id = ?', [userId]);
     const user = rows[0];
     const token = signToken(user);
@@ -368,67 +374,55 @@ app.get('/api/student/profile/me', verifyToken, async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Only students have student profiles
-    if (requester.role !== 'student' || !requester.student_id) {
-      return res.status(403).json({ error: 'Student profile not applicable' });
+    // Try to get detailed profile from student_profiles table
+    if (requester.role === 'student' && requester.student_id) {
+      const [rows] = await pool.execute(
+        `
+        SELECT 
+          u.id AS user_id,
+          u.name AS user_name,
+          u.email AS login_email,
+          u.role,
+          sp.*
+        FROM users u
+        LEFT JOIN student_profiles sp ON u.id = sp.user_id
+        WHERE u.id = ?
+        LIMIT 1
+        `,
+        [requester.id]
+      );
+
+      if (rows && rows.length > 0) {
+        // If profile exists in student_profiles, return it. 
+        // If not (sp.id is null), return basic user info from users table.
+        const profileData = rows[0];
+        if (!profileData.student_id) {
+          // Fallback to basic user info if no profile record exists
+          return res.json({ 
+            profile: {
+              full_name: profileData.user_name,
+              email: profileData.login_email,
+              student_id: requester.student_id,
+              is_incomplete: true
+            } 
+          });
+        }
+        return res.json({ profile: profileData });
+      }
     }
 
-    const [rows] = await pool.execute(
-      `
-      SELECT 
-        u.id AS user_id,
-        u.email AS login_email,
-        u.role,
-        sp.*
-      FROM student_profiles sp
-      INNER JOIN users u ON u.id = sp.user_id
-      WHERE sp.student_id = ?
-      LIMIT 1
-      `,
-      [requester.student_id]
+    // Default: fetch from users table for admin/teacher or fallback
+    const [userRows] = await pool.execute(
+      'SELECT id, name as full_name, email, role, student_id, employee_code, created_at FROM users WHERE id = ? LIMIT 1',
+      [requester.id]
     );
 
-    if (!rows || rows.length === 0) {
-      return res.status(404).json({ error: 'Student profile not found' });
-    }
-
-    return res.json({ profile: rows[0] });
-
-  } catch (err) {
-    console.error('Profile me error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-
-/* ------------------------------------------------------------------
-  PROFILE: GET me (based on token)
-  - Protected: returns the profile for the token owner (if they have student_id)
------------------------------------------------------------------- */
-app.get('/api/student/profile/me', verifyToken, async (req, res) => {
-  try {
-    const requester = req.user;
-    if (!requester) return res.status(401).json({ error: 'Unauthorized' });
-
-    // If the token owner has a student_id, fetch by that; else error
-    if (!requester.student_id) {
-      // If admin/teacher request, you may prefer to return their user record:
-      const [rowsSelf] = await pool.execute('SELECT id, name, email, role, student_id, employee_code, created_at FROM users WHERE id = ? LIMIT 1', [requester.id]);
-      if (!rowsSelf || rowsSelf.length === 0) return res.status(404).json({ error: 'User not found' });
-      return res.json({ profile: rowsSelf[0] });
-    }
-
-    const [rows] = await pool.execute(
-      'SELECT id, name, email, role, student_id, employee_code, created_at FROM users WHERE student_id = ? LIMIT 1',
-      [requester.student_id]
-    );
-
-    if (!rows || rows.length === 0) {
+    if (!userRows || userRows.length === 0) {
       return res.status(404).json({ error: 'Profile not found' });
     }
 
-    return res.json({ profile: rows[0] });
+    return res.json({ profile: userRows[0] });
+
   } catch (err) {
     console.error('Profile me error:', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -472,12 +466,12 @@ app.get("/api/student/attendance/summary", verifyToken, async (req, res) => {
     // subjects below 75%
     const [lowSubjects] = await pool.execute(`
       SELECT s.course_id,
-      ROUND((SUM(ar.status='present')/COUNT(*))*100,1) AS percentage
+      ROUND((SUM(CASE WHEN ar.status='present' THEN 1 ELSE 0 END)::DECIMAL/COUNT(*))*100,1) AS percentage
       FROM attendance_records ar
       JOIN attendance_sessions s ON s.id = ar.session_id
       WHERE ar.student_user_id = ?
       GROUP BY s.course_id
-      HAVING percentage < 75
+      HAVING (SUM(CASE WHEN ar.status='present' THEN 1 ELSE 0 END)::DECIMAL/COUNT(*))*100 < 75
     `, [studentId]);
 
     res.json({
@@ -510,14 +504,14 @@ app.get("/api/student/attendance/subjects", verifyToken, async (req, res) => {
         c.id AS course_id,
         c.course_name AS name,
         c.course_code AS code,
-        SUM(ar.status='present') AS present,
+        SUM(CASE WHEN ar.status='present' THEN 1 ELSE 0 END) AS present,
         COUNT(*) AS total,
-        ROUND((SUM(ar.status='present')/COUNT(*))*100,1) AS percentage
+        ROUND((SUM(CASE WHEN ar.status='present' THEN 1 ELSE 0 END)::DECIMAL/COUNT(*))*100,1) AS percentage
       FROM attendance_records ar
       JOIN attendance_sessions s ON s.id = ar.session_id
       JOIN courses c ON c.id = s.course_id
       WHERE ar.student_user_id = ?
-      GROUP BY s.course_id
+      GROUP BY c.id, c.course_name, c.course_code
       ORDER BY c.course_name
     `, [studentId]);
 
@@ -546,8 +540,8 @@ app.get("/api/student/attendance/calendar", verifyToken, async (req, res) => {
       FROM attendance_records ar
       JOIN attendance_sessions s ON s.id = ar.session_id
       WHERE ar.student_user_id = ?
-      AND MONTH(s.class_date) = ?
-      AND YEAR(s.class_date) = ?
+      AND EXTRACT(MONTH FROM s.class_date) = ?
+      AND EXTRACT(YEAR FROM s.class_date) = ?
     `;
 
     const params = [studentId, month, year];
@@ -586,7 +580,7 @@ app.get("/api/student/courses", verifyToken, async (req,res)=>{
         COUNT(DISTINCT cl.id) AS totalLectures,
         COUNT(DISTINCT slp.id) AS completedLectures,
 
-        (COUNT(DISTINCT slp.id)/COUNT(DISTINCT cl.id))*100 AS progress,
+        (COUNT(DISTINCT slp.id)::DECIMAL / NULLIF(COUNT(DISTINCT cl.id), 0)) * 100 AS progress,
 
         COUNT(DISTINCT cm.id) AS materials
 
@@ -599,7 +593,7 @@ app.get("/api/student/courses", verifyToken, async (req,res)=>{
            ON slp.lecture_id = cl.id AND slp.student_user_id = ?
       LEFT JOIN course_materials cm ON cm.course_id = c.id
       WHERE cs.student_user_id = ?
-      GROUP BY c.id
+      GROUP BY c.id, c.course_name, c.course_code, u.name
       ORDER BY c.course_name
     `,[studentId, studentId]);
 
@@ -607,7 +601,7 @@ app.get("/api/student/courses", verifyToken, async (req,res)=>{
 
   } catch(err){
     console.error(err);
-    res.status(500).json({error:"Server error"});
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -634,7 +628,7 @@ app.get("/api/student/course/:courseId/lectures", verifyToken, async (req,res)=>
         cl.video_type,
         cl.ai_summary,
         slp.answered_interactions,
-        IF(slp.completed=1,1,0) AS completed
+        CASE WHEN slp.completed=TRUE THEN 1 ELSE 0 END AS completed
       FROM course_lectures cl
       LEFT JOIN student_lecture_progress slp
         ON slp.lecture_id = cl.id

@@ -10,7 +10,7 @@ router.get("/dashboard/summary", async (req, res) => {
   try {
     // Attendance %
     const [[attendance]] = await pool.execute(`
-      SELECT ROUND((SUM(status='present')/COUNT(*))*100) as percentage 
+      SELECT ROUND((SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL/COUNT(*))*100) as percentage 
       FROM attendance_records WHERE student_user_id = ?`, [studentId]);
 
     // CGPA

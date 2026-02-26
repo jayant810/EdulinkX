@@ -5,25 +5,25 @@ const path = require("path");
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const genAI = new GoogleGenerativeAI("AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
+
+function getModel(modelName) {
+  return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
+}
 
 // Helper to generate summary
 async function generateSummary(title, subTitle) {
   const modelsToTry = [
-    "gemini-1.5-flash", 
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-pro", 
-    "gemini-pro",
-    "gemini-1.0-pro",
-    "models/gemini-1.5-flash",
-    "models/gemini-1.5-pro",
-    "models/gemini-pro"
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-pro"
   ];
   
   for (const modelName of modelsToTry) {
     try {
       console.log(`[AI] Attempting summary with model: ${modelName}`);
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = getModel(modelName);
       const prompt = `Generate a concise, professional educational summary for a lecture titled "${title}" with description: "${subTitle || 'No description provided'}". Keep it under 100 words. Focus on core learning objectives.`;
       const result = await model.generateContent(prompt);
       const summary = result.response.text();
@@ -31,22 +31,20 @@ async function generateSummary(title, subTitle) {
       return summary;
     } catch (err) {
       console.warn(`[AI] Model ${modelName} failed:`, err.message);
-      // If it's a 404, we continue. If it's 401 (Unauthorized), we should probably stop.
-      if (err.message.includes("401") || err.message.includes("API key")) {
-        console.error("[AI] Authentication error. Check your API key.");
-        break;
-      }
+      if (err.message.includes("401") || err.message.includes("API key")) break;
       continue; 
     }
   }
   
-  console.error("[AI] All models failed to generate summary.");
-  return "AI Summary unavailable at the moment.";
+  // --- SMART FALLBACK (Free/Offline) ---
+  console.log("[AI] Using template-based fallback summary.");
+  return `This lecture on "${title}" covers key concepts and learning objectives. ${subTitle ? subTitle : 'It provides an in-depth exploration of the subject matter to help students build a strong foundational understanding.'}`;
 }
 
 // 1. Teacher Dashboard Summary
 router.get("/dashboard", async (req, res) => {
   const teacherId = req.user.id;
+  console.log(`[Dashboard] Fetching stats for teacher ID: ${teacherId}`);
   try {
     // Total Students
     const [[students]] = await pool.execute(`
@@ -54,10 +52,12 @@ router.get("/dashboard", async (req, res) => {
       FROM course_students cs
       JOIN course_teachers ct ON cs.course_id = ct.course_id
       WHERE ct.teacher_user_id = ?`, [teacherId]);
+    console.log(`[Dashboard] Students raw:`, students);
 
     // Active Courses
     const [[courses]] = await pool.execute(`
       SELECT COUNT(*) as count FROM course_teachers WHERE teacher_user_id = ?`, [teacherId]);
+    console.log(`[Dashboard] Courses raw:`, courses);
 
     // Pending Grading (Assignments)
     const [[pendingAssignments]] = await pool.execute(`
@@ -68,7 +68,7 @@ router.get("/dashboard", async (req, res) => {
 
     // Avg Attendance
     const [[attendance]] = await pool.execute(`
-      SELECT ROUND(AVG(status='present')*100) as percentage 
+      SELECT ROUND(AVG(CASE WHEN status='present' THEN 1 ELSE 0 END)*100) as percentage 
       FROM attendance_records r
       JOIN attendance_sessions s ON s.id = r.session_id
       WHERE s.teacher_user_id = ?`, [teacherId]);
@@ -76,17 +76,17 @@ router.get("/dashboard", async (req, res) => {
     // Today's Classes
     const [classes] = await pool.execute(`
       SELECT c.course_name as subject, cl.section, cl.room, 
-             TIME_FORMAT(cl.start_time, '%h:%i %p') as time,
+             TO_CHAR(cl.start_time, 'HH12:MI AM') as time,
              (SELECT COUNT(*) FROM course_students WHERE course_id = cl.course_id) as students
       FROM classes cl
       JOIN courses c ON c.id = cl.course_id
-      WHERE cl.teacher_user_id = ? AND cl.class_date = CURDATE()
+      WHERE cl.teacher_user_id = ? AND cl.class_date = CURRENT_DATE
       ORDER BY cl.start_time ASC`, [teacherId]);
 
     // Recent Submissions
     const [submissions] = await pool.execute(`
       SELECT u.name as student, a.title as assignment, c.course_name as course,
-             DATE_FORMAT(s.submitted_at, '%Y-%m-%d %H:%i:%s') as time
+             TO_CHAR(s.submitted_at, 'YYYY-MM-DD HH24:MI:SS') as time
       FROM assignment_submissions s
       JOIN assignments a ON a.id = s.assignment_id
       JOIN users u ON u.id = s.student_user_id
@@ -98,10 +98,10 @@ router.get("/dashboard", async (req, res) => {
 
     res.json({
       stats: {
-        totalStudents: students?.count || 0,
-        activeCourses: courses?.count || 0,
-        pendingGrading: pendingAssignments?.count || 0,
-        avgAttendance: attendance?.percentage || 0
+        totalStudents: parseInt(students?.count || 0),
+        activeCourses: parseInt(courses?.count || 0),
+        pendingGrading: parseInt(pendingAssignments?.count || 0),
+        avgAttendance: parseInt(attendance?.percentage || 0)
       },
       classes,
       submissions
@@ -247,7 +247,7 @@ router.get("/exams", async (req, res) => {
              (SELECT COUNT(*) FROM course_students WHERE course_id = e.course_id) as enrolled
       FROM exams e
       JOIN courses c ON c.id = e.course_id
-      WHERE e.teacher_id = ? AND e.exam_date >= CURDATE()
+      WHERE e.teacher_id = ? AND e.exam_date >= CURRENT_DATE
       ORDER BY e.exam_date ASC`, [teacherId]);
 
     const [past] = await pool.execute(`
@@ -257,7 +257,7 @@ router.get("/exams", async (req, res) => {
              (SELECT ROUND(AVG(score/total_marks*100)) FROM exam_submissions WHERE exam_id = e.id) as avgScore
       FROM exams e
       JOIN courses c ON c.id = e.course_id
-      WHERE e.teacher_id = ? AND e.exam_date < CURDATE()
+      WHERE e.teacher_id = ? AND e.exam_date < CURRENT_DATE
       ORDER BY e.exam_date DESC`, [teacherId]);
 
     res.json({ upcoming, past });
@@ -269,30 +269,29 @@ router.get("/exams", async (req, res) => {
 router.post("/exams", async (req, res) => {
   const teacherId = req.user.id;
   const { title, course_id, exam_type, duration, date, time, instructions, total_marks, questions } = req.body;
-  let connection;
+  const client = await pool.connect();
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    const [result] = await connection.execute(
-      "INSERT INTO exams (course_id, teacher_id, title, exam_type, duration_minutes, exam_date, start_time, instructions, total_marks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    await client.query('BEGIN');
+    const { rows: resultRows } = await client.query(
+      "INSERT INTO exams (course_id, teacher_id, title, exam_type, duration_minutes, exam_date, start_time, instructions, total_marks) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
       [course_id, teacherId, title, exam_type, duration, date, time, instructions, total_marks]
     );
-    const examId = result.insertId;
+    const examId = resultRows[0].id;
     if (questions && questions.length > 0) {
       for (const q of questions) {
-        await connection.execute(
-          "INSERT INTO exam_questions (exam_id, question_text, options, correct_answer, marks) VALUES (?, ?, ?, ?, ?)",
+        await client.query(
+          "INSERT INTO exam_questions (exam_id, question_text, options, correct_answer, marks) VALUES ($1, $2, $3, $4, $5)",
           [examId, q.question, q.options ? JSON.stringify(q.options) : null, q.correctAnswer, q.marks]
         );
       }
     }
-    await connection.commit();
+    await client.query('COMMIT');
     res.status(201).json({ id: examId });
   } catch (err) {
-    if (connection) await connection.rollback();
+    await client.query('ROLLBACK');
     res.status(500).json({ error: "Server error" });
   } finally {
-    if (connection) connection.release();
+    client.release();
   }
 });
 
@@ -330,29 +329,28 @@ router.get("/courses/:courseId/students", async (req, res) => {
 router.post("/attendance", async (req, res) => {
   const teacherId = req.user.id;
   const { courseId, date, records } = req.body;
-  let connection;
+  const client = await pool.connect();
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    const [[existingSession]] = await connection.execute("SELECT id FROM attendance_sessions WHERE course_id = ? AND class_date = ?", [courseId, date]);
+    await client.query('BEGIN');
+    const { rows: sessionRows } = await client.query("SELECT id FROM attendance_sessions WHERE course_id = $1 AND class_date = $2", [courseId, date]);
     let sessionId;
-    if (existingSession) {
-      sessionId = existingSession.id;
+    if (sessionRows.length > 0) {
+      sessionId = sessionRows[0].id;
     } else {
-      const [sessionResult] = await connection.execute("INSERT INTO attendance_sessions (course_id, teacher_user_id, class_date) VALUES (?, ?, ?)", [courseId, teacherId, date]);
-      sessionId = sessionResult.insertId;
+      const { rows: insertRows } = await client.query("INSERT INTO attendance_sessions (course_id, teacher_user_id, class_date) VALUES ($1, $2, $3) RETURNING id", [courseId, teacherId, date]);
+      sessionId = insertRows[0].id;
     }
-    await connection.execute("DELETE FROM attendance_records WHERE session_id = ?", [sessionId]);
+    await client.query("DELETE FROM attendance_records WHERE session_id = $1", [sessionId]);
     for (const [studentId, status] of Object.entries(records)) {
-      await connection.execute("INSERT INTO attendance_records (session_id, student_user_id, status) VALUES (?, ?, ?)", [sessionId, studentId, status ? 'present' : 'absent']);
+      await client.query("INSERT INTO attendance_records (session_id, student_user_id, status) VALUES ($1, $2, $3)", [sessionId, studentId, status ? 'present' : 'absent']);
     }
-    await connection.commit();
+    await client.query('COMMIT');
     res.status(201).json({ message: "Attendance updated" });
   } catch (err) {
-    if (connection) await connection.rollback();
+    await client.query('ROLLBACK');
     res.status(500).json({ error: "Server error" });
   } finally {
-    if (connection) connection.release();
+    client.release();
   }
 });
 
@@ -361,13 +359,14 @@ router.get("/attendance/history", async (req, res) => {
   try {
     const [rows] = await pool.execute(`
       SELECT s.class_date as date, c.course_name as course, 'A' as section,
-             SUM(r.status='present') as present, SUM(r.status='absent') as absent,
-             ROUND(AVG(r.status='present')*100) as percentage
+             SUM(CASE WHEN r.status='present' THEN 1 ELSE 0 END) as present, 
+             SUM(CASE WHEN r.status='absent' THEN 1 ELSE 0 END) as absent,
+             ROUND(AVG(CASE WHEN r.status='present' THEN 1 ELSE 0 END)*100) as percentage
       FROM attendance_sessions s
       JOIN courses c ON c.id = s.course_id
       JOIN attendance_records r ON r.session_id = s.id
       WHERE s.teacher_user_id = ?
-      GROUP BY s.id ORDER BY s.class_date DESC`, [teacherId]);
+      GROUP BY s.id, s.class_date, c.course_name ORDER BY s.class_date DESC`, [teacherId]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -380,7 +379,7 @@ router.get("/assignments", async (req, res) => {
   try {
     const [active] = await pool.execute(`
       SELECT a.*, 
-             a.total_marks as max_score,
+             a.max_score,
              c.course_name, c.course_code,
              (SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = a.id) as submissions,
              (SELECT COUNT(*) FROM course_students WHERE course_id = a.course_id) as total
@@ -391,7 +390,7 @@ router.get("/assignments", async (req, res) => {
 
     const [past] = await pool.execute(`
       SELECT a.*, 
-             a.total_marks as max_score,
+             a.max_score,
              c.course_name, c.course_code,
              (SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = a.id) as submissions,
              (SELECT COUNT(*) FROM assignment_submissions WHERE assignment_id = a.id AND status = 'graded') as graded,
@@ -411,43 +410,40 @@ router.post("/assignments", async (req, res) => {
   const teacherId = req.user.id;
   const { course_id, title, description, type, due_date, max_score, questions, duration_minutes } = req.body;
 
-  let connection;
+  const client = await pool.connect();
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
+    await client.query('BEGIN');
 
     // Verify ownership
-    const [[owner]] = await connection.execute("SELECT id FROM course_teachers WHERE course_id = ? AND teacher_user_id = ?", [course_id, teacherId]);
-    if (!owner) {
-      connection.release();
+    const { rows: ownerRows } = await client.query("SELECT id FROM course_teachers WHERE course_id = $1 AND teacher_user_id = $2", [course_id, teacherId]);
+    if (ownerRows.length === 0) {
       return res.status(403).json({ error: "Not authorized to add assignments to this course" });
     }
 
-    // Try to insert using both possible column names for max_score/total_marks
-    const [result] = await connection.execute(
-      "INSERT INTO assignments (course_id, teacher_user_id, title, description, type, due_date, total_marks, duration_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    const { rows: resultRows } = await client.query(
+      "INSERT INTO assignments (course_id, teacher_user_id, title, description, type, due_date, max_score, duration_minutes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
       [course_id, teacherId, title, description, type || 'pdf', due_date, max_score || 100, duration_minutes || 0]
     );
 
-    const assignmentId = result.insertId;
+    const assignmentId = resultRows[0].id;
 
     if (questions && questions.length > 0) {
       for (const q of questions) {
-        await connection.execute(
-          "INSERT INTO assignment_questions (assignment_id, question_text, options, correct_answer, marks) VALUES (?, ?, ?, ?, ?)",
+        await client.query(
+          "INSERT INTO assignment_questions (assignment_id, question_text, options, correct_answer, marks) VALUES ($1, $2, $3, $4, $5)",
           [assignmentId, q.question_text, q.options ? JSON.stringify(q.options) : null, q.correct_answer, q.marks || 1]
         );
       }
     }
 
-    await connection.commit();
+    await client.query('COMMIT');
     res.status(201).json({ id: assignmentId, message: "Assignment created successfully" });
   } catch (err) {
-    if (connection) await connection.rollback();
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: "Server error" });
   } finally {
-    if (connection) connection.release();
+    client.release();
   }
 });
 
@@ -458,7 +454,7 @@ router.get("/assignments/:id", async (req, res) => {
 
   try {
     const [[assignment]] = await pool.execute(`
-      SELECT a.*, a.total_marks as max_score 
+      SELECT a.*, a.max_score 
       FROM assignments a
       JOIN course_teachers ct ON ct.course_id = a.course_id
       WHERE a.id = ? AND ct.teacher_user_id = ?`, [id, teacherId]);
@@ -489,47 +485,45 @@ router.put("/assignments/:id", async (req, res) => {
   const { id } = req.params;
   const { title, description, type, due_date, max_score, questions, duration_minutes } = req.body;
 
-  let connection;
+  const client = await pool.connect();
   try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
+    await client.query('BEGIN');
 
     // Verify ownership
-    const [[owner]] = await connection.execute(`
+    const { rows: ownerRows } = await client.query(`
       SELECT a.id FROM assignments a
       JOIN course_teachers ct ON ct.course_id = a.course_id
-      WHERE a.id = ? AND ct.teacher_user_id = ?`, [id, teacherId]);
+      WHERE a.id = $1 AND ct.teacher_user_id = $2`, [id, teacherId]);
 
-    if (!owner) {
-      connection.release();
+    if (ownerRows.length === 0) {
       return res.status(403).json({ error: "Not authorized to update this assignment" });
     }
 
-    await connection.execute(
-      "UPDATE assignments SET title = ?, description = ?, type = ?, due_date = ?, total_marks = ?, duration_minutes = ? WHERE id = ?",
+    await client.query(
+      "UPDATE assignments SET title = $1, description = $2, type = $3, due_date = $4, max_score = $5, duration_minutes = $6 WHERE id = $7",
       [title, description, type, due_date, max_score, duration_minutes || 0, id]
     );
 
     // Update questions: simpler to delete and re-insert for this scale
-    await connection.execute("DELETE FROM assignment_questions WHERE assignment_id = ?", [id]);
+    await client.query("DELETE FROM assignment_questions WHERE assignment_id = $1", [id]);
 
     if (questions && questions.length > 0) {
       for (const q of questions) {
-        await connection.execute(
-          "INSERT INTO assignment_questions (assignment_id, question_text, options, correct_answer, marks) VALUES (?, ?, ?, ?, ?)",
+        await client.query(
+          "INSERT INTO assignment_questions (assignment_id, question_text, options, correct_answer, marks) VALUES ($1, $2, $3, $4, $5)",
           [id, q.question_text, q.options ? JSON.stringify(q.options) : null, q.correct_answer, q.marks || 1]
         );
       }
     }
 
-    await connection.commit();
+    await client.query('COMMIT');
     res.json({ success: true, message: "Assignment updated successfully" });
   } catch (err) {
-    if (connection) await connection.rollback();
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: "Server error" });
   } finally {
-    if (connection) connection.release();
+    client.release();
   }
 });
 
