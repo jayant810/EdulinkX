@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { BulkUpload } from "@/components/shared/BulkUpload";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import * as xlsx from "xlsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
