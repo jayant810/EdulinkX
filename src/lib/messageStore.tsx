@@ -57,6 +57,24 @@ export function MessageStoreProvider({ children }: { children: React.ReactNode }
       });
       const data = await res.json();
       setConversations(data);
+
+      // Check for unread messages to send native notifications for "ignored" messages
+      if ("Notification" in window && Notification.permission === "granted") {
+        const unreadConvs = data.filter((c: Conversation) => c.unread_count > 0);
+        if (unreadConvs.length > 3) {
+          new Notification("EdulinkX - Unread Messages", {
+            body: `You have unread messages in ${unreadConvs.length} different conversations.`,
+            icon: "/favicon.jpg"
+          });
+        } else {
+          unreadConvs.forEach((conv: Conversation) => {
+            new Notification(`Unread from ${conv.other_user_name}`, {
+              body: `You have ${conv.unread_count} new message(s).`,
+              icon: "/favicon.jpg"
+            });
+          });
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch conversations:", err);
     }
@@ -82,28 +100,52 @@ export function MessageStoreProvider({ children }: { children: React.ReactNode }
     }
   }, [token]);
 
-  const sendMessage = async (conversationId: number, content: string) => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/messages/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ conversationId, content })
-      });
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to send message");
+    const sendMessage = async (conversationId: number, content: string) => {
+      if (!token || !user) return;
+      
+      // Create optimistic message
+      const tempId = Date.now();
+      const optimisticMessage: Message = {
+        id: tempId,
+        conversation_id: conversationId,
+        sender_id: user.id,
+        sender_name: user.name,
+        content: content,
+        is_read: true,
+        created_at: new Date().toISOString()
+      };
+  
+      // Update UI immediately
+      setActiveConversationMessages(prev => [...prev, optimisticMessage]);
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/messages/send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ conversationId, content })
+        });
+        
+        if (!res.ok) {
+          // Rollback on error
+          setActiveConversationMessages(prev => prev.filter(m => m.id !== tempId));
+          const errData = await res.json();
+          throw new Error(errData.error || "Failed to send message");
+        }
+        
+        const newMessage = await res.json();
+        // Replace optimistic message with real one
+        setActiveConversationMessages(prev => prev.map(m => m.id === tempId ? newMessage : m));
+        
+      } catch (err) {
+        console.error("Send message error:", err);
+        // Ensure rollback if not already handled
+        setActiveConversationMessages(prev => prev.filter(m => m.id !== tempId));
+        throw err;
       }
-      // We don't need to manually update state here because the socket listener 'new_message' 
-      // will receive the message we just sent and update the state for us.
-    } catch (err) {
-      console.error("Send message error:", err);
-      throw err;
-    }
-  };
+    };
 
   const searchUsers = async (query: string) => {
     if (!token || query.length < 2) return [];
@@ -168,6 +210,11 @@ export function MessageStoreProvider({ children }: { children: React.ReactNode }
     });
     setSocket(newSocket);
 
+    // Request notification permission
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
     newSocket.on("connect", () => {
       newSocket.emit("join_user_room", user.id);
     });
@@ -175,11 +222,25 @@ export function MessageStoreProvider({ children }: { children: React.ReactNode }
     newSocket.on("new_message", ({ conversationId, message }: { conversationId: number, message: Message }) => {
       // If it's the current active conversation, add to messages
       setActiveConversationMessages(prev => {
-        // Only add if it's the same conversation and not already in state
         if (prev.length > 0 && prev[0].conversation_id !== conversationId) return prev;
-        if (prev.find(m => m.id === message.id)) return prev;
+        
+        // Check for duplicates (both real ID and optimistic match)
+        const exists = prev.some(m => 
+          m.id === message.id || 
+          (m.sender_id === message.sender_id && m.content === message.content && Math.abs(new Date(m.created_at).getTime() - new Date(message.created_at).getTime()) < 5000)
+        );
+        
+        if (exists) return prev;
         return [...prev, message];
       });
+
+      // Show native notification if not from self and permission granted
+      if (message.sender_id !== user.id && "Notification" in window && Notification.permission === "granted") {
+        new Notification(`New message from ${message.sender_name}`, {
+          body: message.content,
+          icon: "/favicon.jpg"
+        });
+      }
 
       // Update conversation list
       setConversations(prev => {

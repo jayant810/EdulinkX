@@ -108,10 +108,10 @@ const StudentSettings = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">SMS Notifications</p>
-                      <p className="text-sm text-muted-foreground">Receive updates via SMS</p>
+                      <p className="font-medium">Windows Notifications</p>
+                      <p className="text-sm text-muted-foreground">Receive native OS notifications</p>
                     </div>
-                    <Switch />
+                    <Switch defaultChecked />
                   </div>
                 </CardContent>
               </Card>

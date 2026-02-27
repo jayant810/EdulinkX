@@ -29,6 +29,7 @@ export function MessageInterface() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isNewMsgDialogOpen, setIsNewMsgDialogOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,12 +45,19 @@ export function MessageInterface() {
   }, [activeConversationMessages]);
 
   const handleSend = async () => {
-    if (!activeId || !messageText.trim()) return;
+    if (!activeId || !messageText.trim() || isSending) return;
+    
+    setIsSending(true);
+    const content = messageText;
+    setMessageText(""); // Clear immediately for speed feel
+
     try {
-      await sendMessage(activeId, messageText);
-      setMessageText("");
+      await sendMessage(activeId, content);
     } catch (err: any) {
       alert(err.message);
+      setMessageText(content); // Restore on error
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -308,11 +316,11 @@ export function MessageInterface() {
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    disabled={activeConv?.is_disconnected_by_admin && user?.role === 'student'}
+                    disabled={(activeConv?.is_disconnected_by_admin && user?.role === 'student') || isSending}
                   />
                   <Button 
                     onClick={handleSend}
-                    disabled={!messageText.trim() || (activeConv?.is_disconnected_by_admin && user?.role === 'student')}
+                    disabled={!messageText.trim() || (activeConv?.is_disconnected_by_admin && user?.role === 'student') || isSending}
                   >
                     <Send className="h-4 w-4" />
                   </Button>

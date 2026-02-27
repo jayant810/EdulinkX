@@ -129,6 +129,13 @@ const TeacherSettings = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
+                      <p className="font-medium">Windows Notifications</p>
+                      <p className="text-sm text-muted-foreground">Receive native OS notifications</p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
                       <p className="font-medium">Assignment Submissions</p>
                       <p className="text-sm text-muted-foreground">Get notified when students submit</p>
                     </div>
