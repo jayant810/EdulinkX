@@ -1,11 +1,19 @@
 require('dotenv').config();
 const { Pool } = require('pg');
+const dns = require("dns");
+
+// Force IPv4 for all network requests (Fixes Render ENETUNREACH and timeouts)
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false // Required for Supabase
-  }
+  },
+  connectionTimeoutMillis: 30000, // Increase to 30 seconds
+  idleTimeoutMillis: 30000,
 });
 
 // Advanced MySQL to PostgreSQL translation
