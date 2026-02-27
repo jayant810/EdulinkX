@@ -97,16 +97,8 @@ export function MessageStoreProvider({ children }: { children: React.ReactNode }
         const errData = await res.json();
         throw new Error(errData.error || "Failed to send message");
       }
-      const newMessage = await res.json();
-      // Optimistic update or wait for socket? Let's do optimistic for "instant" feel
-      setActiveConversationMessages(prev => [...prev, newMessage]);
-      setConversations(prev => {
-        const index = prev.findIndex(c => c.id === conversationId);
-        if (index === -1) return prev;
-        const updated = [...prev];
-        updated[index] = { ...updated[index], last_message: content, last_message_at: new Date().toISOString() };
-        return updated.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-      });
+      // We don't need to manually update state here because the socket listener 'new_message' 
+      // will receive the message we just sent and update the state for us.
     } catch (err) {
       console.error("Send message error:", err);
       throw err;
@@ -183,27 +175,27 @@ export function MessageStoreProvider({ children }: { children: React.ReactNode }
     newSocket.on("new_message", ({ conversationId, message }: { conversationId: number, message: Message }) => {
       // If it's the current active conversation, add to messages
       setActiveConversationMessages(prev => {
-        if (prev.length > 0 && prev[0].conversation_id === conversationId) {
-          if (prev.find(m => m.id === message.id)) return prev;
-          return [...prev, message];
-        }
-        return prev;
+        // Only add if it's the same conversation and not already in state
+        if (prev.length > 0 && prev[0].conversation_id !== conversationId) return prev;
+        if (prev.find(m => m.id === message.id)) return prev;
+        return [...prev, message];
       });
 
       // Update conversation list
       setConversations(prev => {
         const index = prev.findIndex(c => c.id === conversationId);
         if (index === -1) {
-          // If conversation not in list, fetch all again
           fetchConversations();
           return prev;
         }
         const updated = [...prev];
+        const isSelf = message.sender_id === user.id;
+        
         updated[index] = { 
           ...updated[index], 
           last_message: message.content, 
           last_message_at: message.created_at,
-          unread_count: message.sender_id !== user.id ? updated[index].unread_count + 1 : updated[index].unread_count
+          unread_count: !isSelf ? updated[index].unread_count + 1 : updated[index].unread_count
         };
         return updated.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
       });
