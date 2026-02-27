@@ -137,7 +137,8 @@ const AdminDepartments = () => {
         body: formData
       });
       const data = await res.json();
-      setBulkPreviewData(data.map((s: any) => ({ ...s, move: !s.already_assigned })));
+      // Only auto-check 'move' if found and NOT already assigned
+      setBulkPreviewData(data.map((s: any) => ({ ...s, move: s.found && !s.already_assigned })));
       setBulkPreviewDialog(true);
       toast.success("Validation complete", { id: "bulk-dept" });
     } catch (err) {
@@ -146,11 +147,18 @@ const AdminDepartments = () => {
   };
 
   const processBulkChanges = async () => {
+    // Filter to only send students that are found and marked for moving
+    const studentsToMove = bulkPreviewData.filter(s => s.found && s.move);
+    if (studentsToMove.length === 0) {
+      toast.error("No students selected to move");
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/admin/departments/${selectedDept.name}/process-bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ students: bulkPreviewData })
+        body: JSON.stringify({ students: studentsToMove })
       });
       if (res.ok) {
         toast.success("Changes saved successfully");
@@ -282,40 +290,64 @@ const AdminDepartments = () => {
 
         {/* Bulk Preview Dialog */}
         <Dialog open={bulkPreviewDialog} onOpenChange={setBulkPreviewDialog}>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-4xl">
             <DialogHeader><DialogTitle>Bulk Assignment Preview</DialogTitle></DialogHeader>
-            <p className="text-xs text-muted-foreground mb-4">Checked students will be moved to {selectedDept?.name}. Unchecked students will be skipped.</p>
-            <ScrollArea className="h-[400px] border rounded-md">
+            <p className="text-xs text-muted-foreground mb-4">Review the validation results. Students with errors cannot be selected.</p>
+            <ScrollArea className="h-[450px] border rounded-md">
               <table className="w-full">
                 <thead className="border-b bg-muted/50 sticky top-0">
                   <tr className="text-left text-xs font-bold uppercase">
                     <th className="p-3">Move?</th>
-                    <th className="p-3">Student</th>
                     <th className="p-3">ID</th>
-                    <th className="p-3">Current Dept</th>
+                    <th className="p-3">Name Info</th>
+                    <th className="p-3">Status / Current Dept</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y text-sm">
-                  {bulkPreviewData.map((s, idx) => (
-                    <tr key={idx} className={s.already_assigned ? "bg-warning/5" : ""}>
-                      <td className="p-3">
-                        <Checkbox checked={s.move} onCheckedChange={(val) => {
-                          const updated = [...bulkPreviewData];
-                          updated[idx].move = !!val;
-                          setBulkPreviewData(updated);
-                        }} />
-                      </td>
-                      <td className="p-3 font-medium">{s.name}</td>
-                      <td className="p-3 font-mono text-xs">{s.student_id}</td>
-                      <td className="p-3">
-                        {s.already_assigned ? (
-                          <div className="flex items-center gap-1 text-warning font-bold">
-                            {s.current_department} <ArrowRight className="h-3 w-3" />
-                          </div>
-                        ) : <span className="text-muted-foreground italic">None</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {bulkPreviewData.map((s, idx) => {
+                    const rowClass = !s.found ? "bg-destructive/5" : s.name_mismatch ? "bg-warning/5" : "";
+                    return (
+                      <tr key={idx} className={rowClass}>
+                        <td className="p-3">
+                          <Checkbox 
+                            disabled={!s.found}
+                            checked={s.move} 
+                            onCheckedChange={(val) => {
+                              const updated = [...bulkPreviewData];
+                              updated[idx].move = !!val;
+                              setBulkPreviewData(updated);
+                            }} 
+                          />
+                        </td>
+                        <td className="p-3 font-mono text-xs">{s.student_id}</td>
+                        <td className="p-3">
+                          {s.found ? (
+                            <div className="space-y-1">
+                              <p className="font-medium">{s.system_name}</p>
+                              {s.name_mismatch && (
+                                <p className="text-[10px] text-warning flex items-center gap-1 font-bold">
+                                  <AlertCircle className="h-3 w-3" /> Excel: {s.excel_name}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-destructive font-bold text-xs">NOT FOUND: {s.excel_name}</p>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {!s.found ? (
+                            <Badge variant="destructive" className="text-[10px]">Invalid ID</Badge>
+                          ) : s.already_assigned ? (
+                            <div className="flex items-center gap-1 text-warning font-bold">
+                              {s.current_department} <ArrowRight className="h-3 w-3" />
+                            </div>
+                          ) : (
+                            <Badge variant="success" className="text-[10px]">Eligible</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </ScrollArea>

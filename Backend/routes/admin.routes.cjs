@@ -274,6 +274,7 @@ router.post("/departments/validate-bulk", upload.single('file'), async (req, res
     const validatedStudents = [];
     for (const row of excelData) {
       const studentId = row.student_id || row.ID;
+      const excelName = row.name || row.Name;
       if (!studentId) continue;
 
       const { rows: user } = await pool.query(`
@@ -283,11 +284,24 @@ router.post("/departments/validate-bulk", upload.single('file'), async (req, res
         WHERE u.student_id = $1`, [studentId]);
       
       if (user.length > 0) {
+        const systemName = user[0].name;
+        const nameMismatch = excelName && systemName.toLowerCase() !== excelName.toLowerCase();
+        
         validatedStudents.push({
           student_id: user[0].student_id,
-          name: user[0].name,
+          system_name: systemName,
+          excel_name: excelName || "Not provided",
           current_department: user[0].department || "None",
-          already_assigned: !!user[0].department
+          already_assigned: !!user[0].department,
+          found: true,
+          name_mismatch: nameMismatch
+        });
+      } else {
+        validatedStudents.push({
+          student_id: studentId,
+          excel_name: excelName || "Not provided",
+          found: false,
+          reason: "Student ID not found in system"
         });
       }
     }
