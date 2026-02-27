@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const pool = require("../db.cjs");
+const { pool } = require("../db.cjs");
 
 module.exports = function(io) {
 

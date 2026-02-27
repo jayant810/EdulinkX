@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { OAuth2Client } = require("google-auth-library");
-const pool = require("../db.cjs");
+const { pool } = require("../db.cjs");
 const dns = require("dns");
 
 // Force IPv4 for all network requests in this file (Fixes Render ENETUNREACH)

@@ -1,6 +1,6 @@
 // seed-user.cjs
 require('dotenv').config({ path: './Backend/.env' });
-const pool = require("./Backend/db.cjs");
+const { pool } = require("./Backend/db.cjs");
 const bcrypt = require("bcrypt");
 
 async function seed() {
