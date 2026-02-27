@@ -20,6 +20,7 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [isForgotLoading, setIsForgotLoading] = useState(false);
+  const [isForgotOpen, setIsForgotOpen] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -186,37 +187,13 @@ const Login = () => {
                   </div>
 
                   <div className="flex justify-end">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <button type="button" className="text-sm text-primary hover:underline">
-                          Forgot Password?
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Reset Password</DialogTitle>
-                          <DialogDescription>
-                            Enter your email address and we'll send you a link to reset your password.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleForgotPassword} className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="forgotEmail">Email Address</Label>
-                            <Input 
-                              id="forgotEmail" 
-                              type="email" 
-                              placeholder="you@college.edu" 
-                              required 
-                              value={forgotEmail} 
-                              onChange={(e) => setForgotEmail(e.target.value)}
-                            />
-                          </div>
-                          <Button type="submit" className="w-full" disabled={isForgotLoading}>
-                            {isForgotLoading ? "Sending..." : "Send Reset Link"}
-                          </Button>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+                    <button 
+                      type="button" 
+                      className="text-sm text-primary hover:underline"
+                      onClick={() => setIsForgotOpen(true)}
+                    >
+                      Forgot Password?
+                    </button>
                   </div>
 
                   <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
@@ -235,6 +212,33 @@ const Login = () => {
                 </form>
               </CardContent>
             </Card>
+
+            <Dialog open={isForgotOpen} onOpenChange={setIsForgotOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Reset Password</DialogTitle>
+                  <DialogDescription>
+                    Enter your email address and we'll send you a link to reset your password.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleForgotPassword} className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="forgotEmail">Email Address</Label>
+                    <Input 
+                      id="forgotEmail" 
+                      type="email" 
+                      placeholder="you@college.edu" 
+                      required 
+                      value={forgotEmail} 
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={isForgotLoading}>
+                    {isForgotLoading ? "Sending..." : "Send Reset Link"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
       </section>
