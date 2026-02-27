@@ -161,17 +161,33 @@ router.post("/reset-password", async (req, res) => {
 // Google Login
 router.post("/google", async (req, res) => {
   const { idToken } = req.body; 
+  
+  if (!idToken) {
+    console.error("[Google Auth] No idToken provided in request body");
+    return res.status(400).json({ error: "No token provided" });
+  }
+
+  // Ensure Client ID is available
+  const clientId = GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    console.error("[Google Auth] GOOGLE_CLIENT_ID is missing from environment variables");
+    return res.status(500).json({ error: "Server configuration error: Missing Client ID" });
+  }
+
   try {
+    console.log("[Google Auth] Verifying token...");
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: GOOGLE_CLIENT_ID,
+      audience: clientId,
     });
     const payload = ticket.getPayload();
     const { sub: googleId, email } = payload;
+    console.log(`[Google Auth] Token verified for email: ${email}`);
 
     let [rows] = await pool.execute("SELECT * FROM users WHERE email = ?", [email]);
     
     if (rows.length === 0) {
+      console.warn(`[Google Auth] Login attempt for non-registered email: ${email}`);
       return res.status(403).json({ error: "Your account is not registered in the system. Please contact the administrator." });
     }
 
@@ -194,8 +210,8 @@ router.post("/google", async (req, res) => {
       }
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Google authentication failed" });
+    console.error("[Google Auth] Verification Error:", err.message);
+    res.status(500).json({ error: `Google authentication failed: ${err.message}` });
   }
 });
 
