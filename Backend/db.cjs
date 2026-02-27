@@ -338,6 +338,29 @@ const initializeDatabase = async () => {
         is_read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS departments (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS teacher_profiles (
+        id SERIAL PRIMARY KEY,
+        user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        employee_code VARCHAR(50) UNIQUE NOT NULL,
+        full_name VARCHAR(255),
+        email VARCHAR(255),
+        phone VARCHAR(20),
+        department VARCHAR(100), -- Kept for compatibility
+        designation VARCHAR(100),
+        qualification TEXT,
+        academic_status VARCHAR(50) DEFAULT 'Active'
+      );
+
+      -- Default departments
+      INSERT INTO departments (name) VALUES ('Computer Science'), ('Electronics'), ('Mechanical'), ('Civil'), ('Business') ON CONFLICT DO NOTHING;
     `);
 
     // 3. Indexes

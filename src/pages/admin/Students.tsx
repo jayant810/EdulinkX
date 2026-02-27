@@ -16,6 +16,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 const AdminStudents = () => {
   const { token } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   
@@ -32,6 +33,16 @@ const AdminStudents = () => {
     department: "",
     semester: ""
   });
+
+  const loadDepartments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/departments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setDepartments(Array.isArray(data) ? data : []);
+    } catch (err) {}
+  };
 
   const loadStudents = async () => {
     if (!token) return;
@@ -51,6 +62,7 @@ const AdminStudents = () => {
 
   useEffect(() => {
     loadStudents();
+    loadDepartments();
   }, [token]);
 
   const handleAddStudent = async () => {
@@ -238,7 +250,14 @@ const AdminStudents = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Department</label>
-                    <Input value={selectedStudent.department || ""} onChange={e => setSelectedStudent({...selectedStudent, department: e.target.value})} />
+                    <select 
+                      className="w-full p-2 border rounded-md" 
+                      value={selectedStudent.department || ""} 
+                      onChange={e => setSelectedStudent({...selectedStudent, department: e.target.value})}
+                    >
+                      <option value="">Select Department</option>
+                      {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Semester</label>
@@ -281,7 +300,14 @@ const AdminStudents = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Department</label>
-                  <Input value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} placeholder="e.g. Computer Science" />
+                  <select 
+                    className="w-full p-2 border rounded-md text-sm" 
+                    value={formData.department} 
+                    onChange={e => setFormData({...formData, department: e.target.value})}
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Semester</label>

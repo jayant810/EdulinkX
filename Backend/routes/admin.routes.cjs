@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require("../db.cjs");
 const bcrypt = require("bcrypt");
 const { PdfReader } = require("pdfreader");
+const xlsx = require("xlsx");
 const multer = require("multer");
 const upload = multer();
 
@@ -31,6 +32,29 @@ async function generateStudentId() {
   return `${prefix}${nextSeq.toString().padStart(3, '0')}`;
 }
 
+// Helper to generate sequential teacher ID: FAC<Year><3-digit-seq>
+async function generateTeacherId() {
+  const year = new Date().getFullYear();
+  const prefix = `FAC${year}`;
+  
+  const { rows } = await pool.query(
+    `SELECT employee_code FROM users 
+     WHERE employee_code LIKE $1 
+     ORDER BY employee_code DESC LIMIT 1`,
+    [`${prefix}%`]
+  );
+
+  let nextSeq = 1;
+  if (rows.length > 0) {
+    const lastId = rows[0].employee_code;
+    const lastSeqStr = lastId.substring(prefix.length); 
+    const lastSeq = parseInt(lastSeqStr) || 0;
+    nextSeq = lastSeq + 1;
+  }
+
+  return `${prefix}${nextSeq.toString().padStart(3, '0')}`;
+}
+
 // Middleware: Check if user is admin
 function isAdmin(req, res, next) {
   if (req.user && req.user.role === 'admin') {
@@ -41,6 +65,157 @@ function isAdmin(req, res, next) {
 }
 
 router.use(isAdmin);
+
+// --- DEPARTMENTS ---
+
+router.get("/departments", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT * FROM departments ORDER BY name ASC");
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/departments", async (req, res) => {
+  const { name, description } = req.body;
+  try {
+    const { rows } = await pool.query(
+      "INSERT INTO departments (name, description) VALUES ($1, $2) RETURNING *",
+      [name, description]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Server error or department exists" });
+  }
+});
+
+// Bulk add students to department via Excel
+router.post("/departments/:deptName/bulk-students", upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  const { deptName } = req.params;
+
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = xlsx.utils.sheet_to_json(sheet);
+
+    const warnings = [];
+    let successCount = 0;
+
+    for (const row of data) {
+      const studentId = row.student_id || row.ID;
+      const name = row.name || row.Name;
+
+      if (!studentId) {
+        warnings.push({ row, reason: "Missing student_id" });
+        continue;
+      }
+
+      const { rows: user } = await pool.query("SELECT id, name FROM users WHERE student_id = $1", [studentId]);
+      
+      if (user.length === 0) {
+        warnings.push({ student_id: studentId, reason: "Student ID not found in system" });
+        continue;
+      }
+
+      // Optional name check if provided in excel
+      if (name && user[0].name.toLowerCase() !== name.toLowerCase()) {
+        warnings.push({ student_id: studentId, reason: `Name mismatch: System has "${user[0].name}", Excel has "${name}"` });
+        // We still update the department even if name mismatches slightly? 
+        // User said: "if some students name or id are not matching rest of the students will be added"
+        // Let's assume name must match if provided.
+        continue;
+      }
+
+      await pool.query(
+        "UPDATE student_profiles SET department = $1 WHERE student_id = $2",
+        [deptName, studentId]
+      );
+      successCount++;
+    }
+
+    res.json({ successCount, warnings });
+  } catch (err) {
+    res.status(500).json({ error: "Error processing file" });
+  }
+});
+
+// --- TEACHERS ---
+
+router.get("/teachers", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.employee_code, tp.department, tp.designation, tp.academic_status
+      FROM users u
+      LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+      WHERE u.role = 'teacher'
+      ORDER BY u.id DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/teachers", async (req, res) => {
+  const { name, email, department, designation } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const empCode = await generateTeacherId();
+    const hashedPassword = await bcrypt.hash('teacher', 10);
+
+    const { rows: userRows } = await client.query(
+      "INSERT INTO users (name, email, password_hash, role, employee_code) VALUES ($1, $2, $3, 'teacher', $4) RETURNING id",
+      [name, email, hashedPassword, empCode]
+    );
+
+    await client.query(
+      "INSERT INTO teacher_profiles (user_id, employee_code, full_name, email, department, designation) VALUES ($1, $2, $3, $4, $5, $6)",
+      [userRows[0].id, empCode, name, email, department, designation]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, employee_code: empCode });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Server error", details: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+router.put("/teachers/:id", async (req, res) => {
+  const { name, email, department, designation, academic_status } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("UPDATE users SET name = $1, email = $2 WHERE id = $3", [name, email, req.params.id]);
+    await client.query(
+      "UPDATE teacher_profiles SET department = $1, designation = $2, academic_status = $3 WHERE user_id = $4",
+      [department, designation, academic_status, req.params.id]
+    );
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Server error" });
+  } finally {
+    client.release();
+  }
+});
+
+router.delete("/teachers/:id", async (req, res) => {
+  try {
+    await pool.query("UPDATE teacher_profiles SET academic_status = 'Inactive' WHERE user_id = $1", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// --- STUDENTS (Existing) ---
 
 // 1. List all students (including inactive)
 router.get("/students", async (req, res) => {
