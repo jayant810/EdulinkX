@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Helmet } from "react-helmet-async";
 import { GraduationCap, Users, Settings, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/AuthProvider";
+import { GoogleLogin } from "@react-oauth/google";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -18,6 +20,8 @@ const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [activeRole, setActiveRole] = useState("student");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -32,6 +36,48 @@ const Login = () => {
   };
 
   const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          idToken: credentialResponse.credential,
+          role: activeRole 
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Google login failed");
+      
+      login(data.token, data.user);
+      toast.success("Login successful!");
+      redirectUser(data.user);
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send reset link");
+      
+      toast.success("Reset link sent to your email!");
+      setForgotEmail("");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsForgotLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,25 +225,45 @@ const Login = () => {
               </CardHeader>
 
               <CardContent className="space-y-6">
-                {/* Role Tabs - Only show during Signup */}
-                {isSignUp && (
-                  <Tabs value={activeRole} onValueChange={setActiveRole}>
-                    <TabsList className="grid grid-cols-3 w-full">
-                      <TabsTrigger value="student" className="flex items-center gap-1">
-                        <GraduationCap className="h-4 w-4" />
-                        <span className="hidden sm:inline">Student</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="teacher" className="flex items-center gap-1">
-                        <Users className="h-4 w-4" />
-                        <span className="hidden sm:inline">Teacher</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="admin" className="flex items-center gap-1">
-                        <Settings className="h-4 w-4" />
-                        <span className="hidden sm:inline">Admin</span>
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                )}
+                {/* Role Tabs - Always show for context */}
+                <Tabs value={activeRole} onValueChange={setActiveRole}>
+                  <TabsList className="grid grid-cols-3 w-full">
+                    <TabsTrigger value="student" className="flex items-center gap-1">
+                      <GraduationCap className="h-4 w-4" />
+                      <span className="hidden sm:inline">Student</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="teacher" className="flex items-center gap-1">
+                      <Users className="h-4 w-4" />
+                      <span className="hidden sm:inline">Teacher</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="admin" className="flex items-center gap-1">
+                      <Settings className="h-4 w-4" />
+                      <span className="hidden sm:inline">Admin</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {/* Google Login */}
+                <div className="flex justify-center">
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => toast.error("Google Login Failed")}
+                    useOneTap
+                    theme="outline"
+                    shape="pill"
+                    text="continue_with"
+                    width="100%"
+                  />
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with email</span>
+                  </div>
+                </div>
 
                 {/* Login/Signup Toggle */}
                 <div className="flex items-center justify-center gap-2 text-sm">
@@ -254,9 +320,37 @@ const Login = () => {
 
                   {!isSignUp && (
                     <div className="flex justify-end">
-                      <button type="button" className="text-sm text-primary hover:underline">
-                        Forgot Password?
-                      </button>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <button type="button" className="text-sm text-primary hover:underline">
+                            Forgot Password?
+                          </button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Reset Password</DialogTitle>
+                            <DialogDescription>
+                              Enter your email address and we'll send you a link to reset your password.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form onSubmit={handleForgotPassword} className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="forgotEmail">Email Address</Label>
+                              <Input 
+                                id="forgotEmail" 
+                                type="email" 
+                                placeholder="you@college.edu" 
+                                required 
+                                value={forgotEmail} 
+                                onChange={(e) => setForgotEmail(e.target.value)}
+                              />
+                            </div>
+                            <Button type="submit" className="w-full" disabled={isForgotLoading}>
+                              {isForgotLoading ? "Sending..." : "Send Reset Link"}
+                            </Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   )}
 

@@ -93,11 +93,27 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(255),
         email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255), -- NULL for Google Login
         role user_role NOT NULL,
         student_id VARCHAR(50) UNIQUE,
         employee_code VARCHAR(50) UNIQUE,
+        google_id VARCHAR(255) UNIQUE,
+        reset_password_token VARCHAR(255),
+        reset_password_expires TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        email_notifications BOOLEAN DEFAULT TRUE,
+        windows_notifications BOOLEAN DEFAULT TRUE,
+        assignment_updates BOOLEAN DEFAULT TRUE,
+        exam_reminders BOOLEAN DEFAULT TRUE,
+        grade_updates BOOLEAN DEFAULT TRUE,
+        fee_reminders BOOLEAN DEFAULT TRUE,
+        attendance_alerts BOOLEAN DEFAULT TRUE,
+        two_factor_enabled BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS student_profiles (

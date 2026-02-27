@@ -13,6 +13,7 @@ import Features from "./pages/Features";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 // Student Pages
@@ -114,6 +115,8 @@ const App = () => (
                   <Route path="/about" element={<About />} />
                   <Route path="/contact" element={<Contact />} />
                 </Route>
+
+                <Route path="/reset-password" element={<ResetPassword />} />
 
                 {/* Login (auto-redirect if already logged in) */}
                 <Route path="/login" element={<LoginRouteWrapper />} />

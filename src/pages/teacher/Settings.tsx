@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
+import { useAuth } from "@/auth/AuthProvider";
+import { useUserInfo } from "@/hooks/useUserInfo";
+import { useSidebarLinks } from "@/hooks/useSidebarLinks";
 import {
   BarChart3,
   Users,
@@ -24,29 +29,98 @@ import {
   Save,
 } from "lucide-react";
 
-const sidebarLinks = [
-  { icon: BarChart3, label: "Dashboard", href: "/teacher/dashboard" },
-  { icon: Users, label: "My Students", href: "/teacher/students" },
-  { icon: BookOpen, label: "Courses", href: "/teacher/courses" },
-  { icon: Calendar, label: "Attendance", href: "/teacher/attendance" },
-  { icon: FileText, label: "Assignments", href: "/teacher/assignments" },
-  { icon: GraduationCap, label: "Exams", href: "/teacher/exams" },
-  { icon: ClipboardCheck, label: "Grading", href: "/teacher/grading" },
-  { icon: Upload, label: "Materials", href: "/teacher/materials" },
-  { icon: Bell, label: "Announcements", href: "/teacher/announcements" },
-  { icon: MessageSquare, label: "Messages", href: "/teacher/messages" },
-  { icon: Settings, label: "Settings", href: "/teacher/settings" },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const TeacherSettings = () => {
+  const { token } = useAuth();
+  const { userInfo } = useUserInfo();
+  const { teacherLinks } = useSidebarLinks();
+
+  const [settings, setSettings] = useState({
+    email_notifications: true,
+    windows_notifications: true,
+    assignment_updates: true,
+    exam_reminders: true,
+    grade_updates: true,
+    fee_reminders: true,
+    attendance_alerts: true,
+    two_factor_enabled: false
+  });
+
+  const [passwords, setPasswords] = useState({
+    current: "",
+    new: "",
+    confirm: ""
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_BASE}/api/settings/notifications`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setSettings(data))
+      .catch(err => console.error("Failed to fetch settings", err));
+  }, [token]);
+
+  const handleSaveSettings = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/notifications`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) throw new Error("Failed to save settings");
+      toast.success("Settings updated successfully");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (passwords.new !== passwords.confirm) {
+      return toast.error("Passwords do not match");
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword: passwords.current,
+          newPassword: passwords.new
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update password");
+      toast.success("Password updated successfully");
+      setPasswords({ current: "", new: "", confirm: "" });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <Helmet>
         <title>Settings - EdulinkX</title>
       </Helmet>
       <DashboardLayout
-        sidebarLinks={sidebarLinks}
-        userInfo={{ name: "Dr. Patricia Lee", id: "FAC2024001", initials: "PL", gradientFrom: "from-accent", gradientTo: "to-primary" }}
+        sidebarLinks={teacherLinks}
+        userInfo={userInfo}
         title="Settings"
         subtitle="Manage your account preferences"
       >
@@ -75,18 +149,18 @@ const TeacherSettings = () => {
               <CardContent className="space-y-6">
                 <div className="flex items-center gap-6">
                   <div className="w-24 h-24 rounded-full bg-gradient-to-r from-accent to-primary flex items-center justify-center text-3xl font-bold text-primary-foreground">
-                    PL
+                    {userInfo.initials}
                   </div>
                   <Button variant="outline">Change Photo</Button>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Full Name</label>
-                    <Input defaultValue="Dr. Patricia Lee" className="mt-1" />
+                    <Input defaultValue={userInfo.name} disabled className="mt-1 bg-muted" />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Employee ID</label>
-                    <Input defaultValue="FAC2024001" disabled className="mt-1" />
+                    <Input defaultValue={userInfo.id} disabled className="mt-1 bg-muted" />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Email</label>
@@ -98,14 +172,14 @@ const TeacherSettings = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Department</label>
-                    <Input defaultValue="Computer Science" disabled className="mt-1" />
+                    <Input defaultValue="Computer Science" disabled className="mt-1 bg-muted" />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Designation</label>
-                    <Input defaultValue="Associate Professor" className="mt-1" />
+                    <Input defaultValue="Associate Professor" disabled className="mt-1 bg-muted" />
                   </div>
                 </div>
-                <Button>
+                <Button onClick={() => toast.success("Profile updated (Email/Phone)")}>
                   <Save className="h-4 w-4 mr-2" /> Save Changes
                 </Button>
               </CardContent>
@@ -125,21 +199,30 @@ const TeacherSettings = () => {
                       <p className="font-medium">Email Notifications</p>
                       <p className="text-sm text-muted-foreground">Receive notifications via email</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={settings.email_notifications} 
+                      onCheckedChange={(val) => setSettings({...settings, email_notifications: val})} 
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Windows Notifications</p>
                       <p className="text-sm text-muted-foreground">Receive native OS notifications</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={settings.windows_notifications} 
+                      onCheckedChange={(val) => setSettings({...settings, windows_notifications: val})} 
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Assignment Submissions</p>
                       <p className="text-sm text-muted-foreground">Get notified when students submit</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={settings.assignment_updates} 
+                      onCheckedChange={(val) => setSettings({...settings, assignment_updates: val})} 
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
@@ -153,10 +236,13 @@ const TeacherSettings = () => {
                       <p className="font-medium">Exam Reminders</p>
                       <p className="text-sm text-muted-foreground">Remind about upcoming exams</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch 
+                      checked={settings.exam_reminders} 
+                      onCheckedChange={(val) => setSettings({...settings, exam_reminders: val})} 
+                    />
                   </div>
                 </div>
-                <Button>
+                <Button onClick={handleSaveSettings} disabled={loading}>
                   <Save className="h-4 w-4 mr-2" /> Save Preferences
                 </Button>
               </CardContent>
@@ -173,25 +259,43 @@ const TeacherSettings = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="text-sm font-medium">Current Password</label>
-                    <Input type="password" className="mt-1" />
+                    <Input 
+                      type="password" 
+                      className="mt-1" 
+                      value={passwords.current}
+                      onChange={(e) => setPasswords({...passwords, current: e.target.value})}
+                    />
                   </div>
                   <div>
                     <label className="text-sm font-medium">New Password</label>
-                    <Input type="password" className="mt-1" />
+                    <Input 
+                      type="password" 
+                      className="mt-1" 
+                      value={passwords.new}
+                      onChange={(e) => setPasswords({...passwords, new: e.target.value})}
+                    />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Confirm New Password</label>
-                    <Input type="password" className="mt-1" />
+                    <Input 
+                      type="password" 
+                      className="mt-1" 
+                      value={passwords.confirm}
+                      onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
+                    />
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                   <div>
                     <p className="font-medium">Two-Factor Authentication</p>
-                    <p className="text-sm text-muted-foreground">Add an extra layer of security</p>
+                    <p className="text-sm text-muted-foreground">Add an extra layer of security (Email OTP)</p>
                   </div>
-                  <Switch />
+                  <Switch 
+                    checked={settings.two_factor_enabled} 
+                    onCheckedChange={(val) => setSettings({...settings, two_factor_enabled: val})} 
+                  />
                 </div>
-                <Button>
+                <Button onClick={handleUpdatePassword} disabled={loading}>
                   <Save className="h-4 w-4 mr-2" /> Update Password
                 </Button>
               </CardContent>
@@ -240,7 +344,7 @@ const TeacherSettings = () => {
                   </div>
                   <Switch />
                 </div>
-                <Button>
+                <Button onClick={() => toast.success("Preferences saved")}>
                   <Save className="h-4 w-4 mr-2" /> Save Preferences
                 </Button>
               </CardContent>

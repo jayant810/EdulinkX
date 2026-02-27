@@ -193,99 +193,6 @@ function verifyToken(req, res, next) {
 }
 
 /* ------------------------------------------------------------------
-  AUTH: LOGIN
------------------------------------------------------------------- */
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  try {
-    const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
-    if (!rows || rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    const user = rows[0];
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    const token = signToken(user);
-    return res.json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        studentId: user.student_id,
-        employeeCode: user.employee_code
-      }
-    });
-  } catch (err) {
-    console.error('Login error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/* ------------------------------------------------------------------
-  AUTH: SIGNUP
------------------------------------------------------------------- */
-app.post('/api/auth/signup', async (req, res) => {
-  const { name, email, password, role, studentId, employeeCode } = req.body;
-  if (!email || !password || !role) return res.status(400).json({ error: 'Missing fields' });
-
-  try {
-    const [exists] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
-    if (exists && exists.length > 0) {
-      return res.status(409).json({ error: 'User already exists' });
-    }
-
-    const password_hash = await bcrypt.hash(password, 10);
-
-    const [result] = await pool.execute(
-      `INSERT INTO users (name, email, password_hash, role, student_id, employee_code)
-       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-      [name || null, email, password_hash, role, studentId || null, employeeCode || null]
-    );
-
-    const userId = result[0].id;
-    const [rows] = await pool.execute('SELECT * FROM users WHERE id = ?', [userId]);
-    const user = rows[0];
-    const token = signToken(user);
-
-    return res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        studentId: user.student_id,
-        employeeCode: user.employee_code
-      }
-    });
-  } catch (err) {
-    console.error('Signup error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/* ------------------------------------------------------------------
-  TEST: list users (no password)
------------------------------------------------------------------- */
-app.get('/api/test/users', async (req, res) => {
-  try {
-    const [rows] = await pool.execute(
-      'SELECT id, name, email, role, student_id, employee_code, created_at FROM users LIMIT 50'
-    );
-    return res.json({ users: rows });
-  } catch (err) {
-    console.error('Error fetching users:', err);
-    return res.status(500).json({ error: 'Database fetch failed' });
-  }
-});
-
-
-/* ------------------------------------------------------------------
   PROFILE: GET by studentId
   - Protected: requires Bearer token
   - Allowed if:
@@ -747,15 +654,21 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import routes
+const authRoutes = require("./routes/auth.routes.cjs");
+const settingsRoutes = require("./routes/settings.routes.cjs");
 const assignmentRoutes = require("./routes/assignments.routes.cjs");
 const communityRoutes = require("./routes/community.routes.cjs")(io);
 const messageRoutes = require("./routes/messages.routes.cjs")(io);
 const studentRoutes = require("./routes/student.routes.cjs");
 const teacherRoutes = require("./routes/teacher.routes.cjs");
 
+// Auth routes
+app.use("/api/auth", authRoutes); 
+
 app.use("/api", verifyToken, assignmentRoutes);
 app.use("/api", verifyToken, communityRoutes);
 app.use("/api", verifyToken, messageRoutes);
+app.use("/api", verifyToken, settingsRoutes);
 app.use("/api/student", verifyToken, studentRoutes);
 app.use("/api/teacher", verifyToken, teacherRoutes);
 
