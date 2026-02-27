@@ -113,6 +113,8 @@ const StudentSettings = () => {
     }
   };
 
+  if (!userInfo) return null; // Prevent crash if userInfo is not yet loaded
+
   return (
     <>
       <Helmet>
@@ -159,7 +161,7 @@ const StudentSettings = () => {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" defaultValue="john.smith@student.edu" />
+                      <Input id="email" type="email" defaultValue={userInfo.email} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">Phone</Label>

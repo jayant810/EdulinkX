@@ -3,37 +3,14 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useUserInfo } from "@/hooks/useUserInfo";
+import { useSidebarLinks } from "@/hooks/useSidebarLinks";
 import {
-  User,
-  Calendar,
-  BookOpen,
-  FileText,
-  GraduationCap,
-  TrendingUp,
-  CreditCard,
-  Bell,
-  MessageSquare,
-  Settings,
-  BarChart3,
   CheckCircle2,
   AlertCircle,
   Info,
   Trash2,
 } from "lucide-react";
-
-const sidebarLinks = [
-  { icon: BarChart3, label: "Dashboard", href: "/student/dashboard" },
-  { icon: User, label: "My Profile", href: "/student/profile" },
-  { icon: Calendar, label: "Attendance", href: "/student/attendance" },
-  { icon: BookOpen, label: "Courses", href: "/student/courses" },
-  { icon: FileText, label: "Assignments", href: "/student/assignments" },
-  { icon: GraduationCap, label: "Exams", href: "/student/exams" },
-  { icon: TrendingUp, label: "Grades", href: "/student/grades" },
-  { icon: CreditCard, label: "Fees", href: "/student/fees" },
-  { icon: Bell, label: "Notifications", href: "/student/notifications" },
-  { icon: MessageSquare, label: "Messages", href: "/student/messages" },
-  { icon: Settings, label: "Settings", href: "/student/settings" },
-];
 
 const notifications = [
   { id: 1, type: "info", title: "New Assignment Posted", message: "A new assignment 'Algorithm Analysis Report' has been posted in Data Structures.", time: "2 hours ago", read: false },
@@ -46,6 +23,8 @@ const notifications = [
 ];
 
 const StudentNotifications = () => {
+  const { userInfo } = useUserInfo();
+  const { studentLinks } = useSidebarLinks();
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
@@ -54,8 +33,8 @@ const StudentNotifications = () => {
         <title>Notifications - EdulinkX</title>
       </Helmet>
       <DashboardLayout
-        sidebarLinks={sidebarLinks}
-        userInfo={{ name: "John Smith", id: "STU2024001", initials: "JS" }}
+        sidebarLinks={studentLinks}
+        userInfo={userInfo}
         title="Notifications"
         subtitle="Stay updated with your latest notifications"
         headerActions={

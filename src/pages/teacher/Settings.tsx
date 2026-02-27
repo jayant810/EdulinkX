@@ -113,6 +113,8 @@ const TeacherSettings = () => {
     }
   };
 
+  if (!userInfo) return null; // Prevent crash if userInfo is not yet loaded
+
   return (
     <>
       <Helmet>

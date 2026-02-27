@@ -97,6 +97,8 @@ const AdminSettings = () => {
     }
   };
 
+  if (!userInfo) return null; // Prevent crash if userInfo is not yet loaded
+
   return (
     <>
       <Helmet><title>Settings - EdulinkX Admin</title></Helmet>
