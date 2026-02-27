@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { pool } = require("../db.cjs");
 const bcrypt = require("bcrypt");
-const pdf = require("pdf-parse");
+const { PdfReader } = require("pdfreader");
 const multer = require("multer");
 const upload = multer();
 
@@ -22,7 +22,9 @@ async function generateStudentId() {
   let nextSeq = 1;
   if (rows.length > 0) {
     const lastId = rows[0].student_id;
-    const lastSeq = parseInt(lastId.substring(7)); // STU2026XXX -> index 7 is where XXX starts
+    // Handle cases where the sequence might be longer than 3 digits
+    const lastSeqStr = lastId.substring(prefix.length); 
+    const lastSeq = parseInt(lastSeqStr) || 0;
     nextSeq = lastSeq + 1;
   }
 
@@ -133,62 +135,77 @@ router.post("/students", async (req, res) => {
 });
 
 // 5. Bulk entry using PDF
-// Assumes PDF text contains lines like: "Name, Email, Department, Semester"
+// Assumes PDF text contains rows like: "Name, Email, Department, Semester"
 router.post("/students/bulk-pdf", upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
 
-  try {
-    const data = await pdf(req.file.buffer);
-    const lines = data.text.split('\n').filter(line => line.trim().length > 0);
-    const students = [];
+  const rows = {}; // Organize items by y-coordinate
+  const students = [];
 
-    // Simple parser: skip header if any, expect CSV-like lines in PDF
-    for (const line of lines) {
-      const parts = line.split(',').map(p => p.trim());
-      if (parts.length >= 4 && parts[1].includes('@')) {
-        students.push({
-          name: parts[0],
-          email: parts[1],
-          department: parts[2],
-          semester: parseInt(parts[3])
-        });
-      }
-    }
-
-    if (students.length === 0) return res.status(400).json({ error: "No valid student data found in PDF. Format: Name, Email, Department, Semester" });
-
-    const client = await pool.connect();
-    const results = { success: 0, failed: 0 };
-    try {
-      for (const s of students) {
-        try {
-          await client.query('BEGIN');
-          const studentId = await generateStudentId();
-          const hashedPassword = await bcrypt.hash('student', 10);
-
-          const { rows: userRows } = await client.query(
-            "INSERT INTO users (name, email, password_hash, role, student_id) VALUES ($1, $2, $3, 'student', $4) RETURNING id",
-            [s.name, s.email, hashedPassword, studentId]
-          );
-          const userId = userRows[0].id;
-          await client.query(
-            "INSERT INTO student_profiles (user_id, student_id, full_name, email, department, semester, academic_status) VALUES ($1, $2, $3, $4, $5, $6, 'Active')",
-            [userId, studentId, s.name, s.email, s.department, s.semester]
-          );
-          await client.query('COMMIT');
-          results.success++;
-        } catch (e) {
-          await client.query('ROLLBACK');
-          results.failed++;
+  new PdfReader().parseBuffer(req.file.buffer, async (err, item) => {
+    if (err) {
+      console.error("PDF Parsing Error:", err);
+      if (!res.headersSent) res.status(500).json({ error: "Error parsing PDF" });
+      return;
+    } 
+    
+    if (!item) {
+      // End of file - Process collected rows
+      Object.keys(rows).sort((a, b) => Number(a) - Number(b)).forEach(y => {
+        const line = rows[y].join(", ").trim();
+        const parts = line.split(",").map(p => p.trim());
+        // Simple logic to identify a student row: 4 parts and second part is an email
+        if (parts.length >= 4 && parts[1].includes('@')) {
+          students.push({
+            name: parts[0],
+            email: parts[1],
+            department: parts[2],
+            semester: parseInt(parts[3])
+          });
         }
+      });
+
+      if (students.length === 0) {
+        if (!res.headersSent) res.status(400).json({ error: "No valid student data found in PDF. Format: Name, Email, Department, Semester" });
+        return;
       }
-      res.json({ message: "Bulk upload completed", results });
-    } finally {
-      client.release();
+
+      const client = await pool.connect();
+      const results = { success: 0, failed: 0 };
+      try {
+        for (const s of students) {
+          try {
+            await client.query('BEGIN');
+            const studentId = await generateStudentId();
+            const hashedPassword = await bcrypt.hash('student', 10);
+
+            const { rows: userRows } = await client.query(
+              "INSERT INTO users (name, email, password_hash, role, student_id) VALUES ($1, $2, $3, 'student', $4) RETURNING id",
+              [s.name, s.email, hashedPassword, studentId]
+            );
+            const userId = userRows[0].id;
+            await client.query(
+              "INSERT INTO student_profiles (user_id, student_id, full_name, email, department, semester, academic_status) VALUES ($1, $2, $3, $4, $5, $6, 'Active')",
+              [userId, studentId, s.name, s.email, s.department, s.semester]
+            );
+            await client.query('COMMIT');
+            results.success++;
+          } catch (e) {
+            await client.query('ROLLBACK');
+            results.failed++;
+          }
+        }
+        if (!res.headersSent) res.json({ message: "Bulk upload completed", results });
+      } catch (dbErr) {
+        if (!res.headersSent) res.status(500).json({ error: "Database error during bulk upload" });
+      } finally {
+        client.release();
+      }
+    } else if (item.text) {
+      // Collect text by row
+      (rows[item.y] = rows[item.y] || []).push(item.text);
     }
-  } catch (err) {
-    res.status(500).json({ error: "Error parsing PDF", details: err.message });
-  }
+  });
 });
 
 // 6. "Delete" student (Mark as Inactive)
