@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ const Login = () => {
   const [forgotEmail, setForgotEmail] = useState("");
   const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [isForgotOpen, setIsForgotOpen] = useState(false);
+  const forgotLoadingRef = useRef(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -54,8 +55,9 @@ const Login = () => {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isForgotLoading) return; // Prevent double trigger
+    if (forgotLoadingRef.current) return;
     
+    forgotLoadingRef.current = true;
     setIsForgotLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
@@ -68,11 +70,12 @@ const Login = () => {
       
       toast.success("Reset link sent to your email!");
       setForgotEmail("");
-      setIsForgotOpen(false); // Close dialog on success
+      setIsForgotOpen(false);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setIsForgotLoading(false);
+      forgotLoadingRef.current = false;
     }
   };
 
