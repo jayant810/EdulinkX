@@ -93,15 +93,17 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         name VARCHAR(255),
         email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255), -- NULL for Google Login
+        password_hash VARCHAR(255),
         role user_role NOT NULL,
         student_id VARCHAR(50) UNIQUE,
         employee_code VARCHAR(50) UNIQUE,
-        google_id VARCHAR(255) UNIQUE,
-        reset_password_token VARCHAR(255),
-        reset_password_expires TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- Ensure new columns exist for existing databases
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_token VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_expires TIMESTAMP;
 
       CREATE TABLE IF NOT EXISTS user_settings (
         user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
