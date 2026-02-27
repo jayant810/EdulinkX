@@ -66,42 +66,20 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// Signup
-router.post("/signup", async (req, res) => {
-  const { name, email, password, role, studentId, employeeCode } = req.body;
-  try {
-    const [exists] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
-    if (exists && exists.length > 0) return res.status(409).json({ error: 'User already exists' });
-
-    const hash = await bcrypt.hash(password, 10);
-    const [result] = await pool.execute(
-      `INSERT INTO users (name, email, password_hash, role, student_id, employee_code)
-       VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
-      [name, email, hash, role || 'student', studentId || null, employeeCode || null]
-    );
-
-    const user = result[0];
-    const token = signToken(user);
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        studentId: user.student_id,
-        employeeCode: user.employee_code
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 // Change Password (from Settings)
-router.post("/auth/change-password", async (req, res) => {
+router.post("/change-password", async (req, res) => {
+  const authHeader = req.headers?.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Missing Authorization header' });
+  const token = authHeader.split(' ')[1];
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
   const { currentPassword, newPassword } = req.body;
-  const userId = req.user.id;
+  const userId = decoded.id;
 
   try {
     const [rows] = await pool.execute("SELECT password_hash FROM users WHERE id = ?", [userId]);
@@ -122,7 +100,7 @@ router.post("/auth/change-password", async (req, res) => {
 });
 
 // Forgot Password (Request Reset)
-router.post("/auth/forgot-password", async (req, res) => {
+router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
   try {
     const [users] = await pool.execute("SELECT id, name FROM users WHERE email = ?", [email]);
@@ -158,7 +136,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 });
 
 // Reset Password (with token)
-router.post("/auth/reset-password", async (req, res) => {
+router.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
   try {
     const [users] = await pool.execute(
@@ -181,32 +159,26 @@ router.post("/auth/reset-password", async (req, res) => {
 });
 
 // Google Login
-router.post("/auth/google", async (req, res) => {
-  const { idToken, role } = req.body; // role might be needed if creating a new user
+router.post("/google", async (req, res) => {
+  const { idToken } = req.body; 
   try {
     const ticket = await googleClient.verifyIdToken({
       idToken,
       audience: GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
-    const { sub: googleId, email, name, picture } = payload;
+    const { sub: googleId, email } = payload;
 
     let [rows] = await pool.execute("SELECT * FROM users WHERE email = ?", [email]);
-    let user;
-
+    
     if (rows.length === 0) {
-      // Create new user if they don't exist
-      const [result] = await pool.execute(
-        "INSERT INTO users (name, email, role, google_id) VALUES (?, ?, ?, ?) RETURNING *",
-        [name, email, role || 'student', googleId]
-      );
-      user = result[0];
-    } else {
-      user = rows[0];
-      // Update google_id if not present
-      if (!user.google_id) {
-        await pool.execute("UPDATE users SET google_id = ? WHERE id = ?", [googleId, user.id]);
-      }
+      return res.status(403).json({ error: "Your account is not registered in the system. Please contact the administrator." });
+    }
+
+    const user = rows[0];
+    // Update google_id if not present
+    if (!user.google_id) {
+      await pool.execute("UPDATE users SET google_id = ? WHERE id = ?", [googleId, user.id]);
     }
 
     const token = signToken(user);

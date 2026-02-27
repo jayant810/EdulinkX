@@ -17,18 +17,12 @@ const Login = () => {
   const { login } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [activeRole, setActiveRole] = useState("student");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [isForgotLoading, setIsForgotLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    name: "",
-    studentId: "",
-    employeeCode: "",
-    confirmPassword: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,8 +37,7 @@ const Login = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          idToken: credentialResponse.credential,
-          role: activeRole 
+          idToken: credentialResponse.credential
         }),
       });
       const data = await res.json();
@@ -83,59 +76,23 @@ const Login = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      if (isSignUp && formData.password !== formData.confirmPassword) {
-        toast.error("Passwords do not match");
+      const payload = { email: formData.email, password: formData.password };
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Login failed");
         setIsSubmitting(false);
         return;
       }
 
-      if (isSignUp) {
-        const payload: any = {
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: activeRole,
-        };
-
-        if (activeRole === "student") payload.studentId = formData.studentId;
-        if (activeRole === "teacher") payload.employeeCode = formData.employeeCode;
-
-        const res = await fetch(`${API_BASE}/api/auth/signup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-          toast.error(data.error || "Signup failed");
-          setIsSubmitting(false);
-          return;
-        }
-
-        login(data.token, data.user);
-        toast.success("Account created successfully!");
-        redirectUser(data.user);
-
-      } else {
-        const payload = { email: formData.email, password: formData.password };
-        const res = await fetch(`${API_BASE}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-          toast.error(data.error || "Login failed");
-          setIsSubmitting(false);
-          return;
-        }
-
-        login(data.token, data.user);
-        toast.success("Login successful!");
-        redirectUser(data.user);
-      }
+      login(data.token, data.user);
+      toast.success("Login successful!");
+      redirectUser(data.user);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "An error occurred");
@@ -150,46 +107,10 @@ const Login = () => {
     else navigate("/");
   };
 
-  const roleConfig = {
-    student: {
-      icon: GraduationCap,
-      color: "primary",
-      title: "Student Portal",
-      description: "Access your courses, grades, and academic records",
-      idField: "studentId",
-      idLabel: "Student ID / Enrollment Number",
-      idPlaceholder: "e.g., STU2024001",
-    },
-    teacher: {
-      icon: Users,
-      color: "accent",
-      title: "Teacher Portal",
-      description: "Manage courses, students, and assessments",
-      idField: "employeeCode",
-      idLabel: "Employee Code",
-      idPlaceholder: "e.g., FAC2024001",
-    },
-    admin: {
-      icon: Settings,
-      color: "warning",
-      title: "Admin Portal",
-      description: "Manage institution settings and users",
-      idField: null,
-      idLabel: null,
-      idPlaceholder: null,
-    },
-  };
-
-  const currentRole = roleConfig[activeRole as keyof typeof roleConfig];
-  const IconComponent = isSignUp ? currentRole.icon : GraduationCap;
-  const portalTitle = isSignUp ? currentRole.title : "Nexus Portal";
-  const portalDesc = isSignUp ? currentRole.description : "Access your academic workspace";
-  const accentColor = isSignUp ? currentRole.color : "primary";
-
   return (
     <>
       <Helmet>
-        <title>{isSignUp ? "Sign Up" : "Login"} - EdulinkX</title>
+        <title>Login - EdulinkX</title>
         <meta name="description" content="Access your EdulinkX account. Unified login for students, teachers, and administrators." />
       </Helmet>
 
@@ -217,34 +138,14 @@ const Login = () => {
 
             <Card className="shadow-xl">
               <CardHeader className="text-center pb-4">
-                <div className={`w-16 h-16 rounded-full bg-${accentColor}/10 flex items-center justify-center mx-auto mb-4`}>
-                  <IconComponent className={`h-8 w-8 text-${accentColor}`} />
+                <div className={`w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4`}>
+                  <GraduationCap className={`h-8 w-8 text-primary`} />
                 </div>
-                <CardTitle className="text-2xl font-display">{portalTitle}</CardTitle>
-                <CardDescription>{portalDesc}</CardDescription>
+                <CardTitle className="text-2xl font-display">Nexus Portal</CardTitle>
+                <CardDescription>Access your academic workspace</CardDescription>
               </CardHeader>
 
               <CardContent className="space-y-6">
-                {/* Role Tabs - Only show during Signup */}
-                {isSignUp && (
-                  <Tabs value={activeRole} onValueChange={setActiveRole}>
-                    <TabsList className="grid grid-cols-3 w-full">
-                      <TabsTrigger value="student" className="flex items-center gap-1">
-                        <GraduationCap className="h-4 w-4" />
-                        <span className="hidden sm:inline">Student</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="teacher" className="flex items-center gap-1">
-                        <Users className="h-4 w-4" />
-                        <span className="hidden sm:inline">Teacher</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="admin" className="flex items-center gap-1">
-                        <Settings className="h-4 w-4" />
-                        <span className="hidden sm:inline">Admin</span>
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                )}
-
                 {/* Google Login */}
                 <div className="flex justify-center">
                   <GoogleLogin
@@ -267,41 +168,12 @@ const Login = () => {
                   </div>
                 </div>
 
-                {/* Login/Signup Toggle */}
-                <div className="flex items-center justify-center gap-2 text-sm">
-                  <span className="text-muted-foreground">{isSignUp ? "Already have an account?" : "Don't have an account?"}</span>
-                  <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-primary font-medium hover:underline">
-                    {isSignUp ? "Login" : "Sign Up"}
-                  </button>
-                </div>
-
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  {isSignUp && (
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input id="name" name="name" placeholder="John Smith" required value={formData.name} onChange={handleChange} />
-                    </div>
-                  )}
-
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address</Label>
                     <Input id="email" name="email" type="email" placeholder="you@college.edu" required value={formData.email} onChange={handleChange} />
                   </div>
-
-                  {isSignUp && currentRole.idField && (
-                    <div className="space-y-2">
-                      <Label htmlFor={currentRole.idField}>{currentRole.idLabel}</Label>
-                      <Input
-                        id={currentRole.idField}
-                        name={currentRole.idField}
-                        placeholder={currentRole.idPlaceholder || ""}
-                        required
-                        value={formData[currentRole.idField as keyof typeof formData]}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
@@ -313,48 +185,39 @@ const Login = () => {
                     </div>
                   </div>
 
-                  {isSignUp && (
-                    <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Confirm Password</Label>
-                      <Input id="confirmPassword" name="confirmPassword" type="password" placeholder="••••••••" required value={formData.confirmPassword} onChange={handleChange} />
-                    </div>
-                  )}
-
-                  {!isSignUp && (
-                    <div className="flex justify-end">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <button type="button" className="text-sm text-primary hover:underline">
-                            Forgot Password?
-                          </button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Reset Password</DialogTitle>
-                            <DialogDescription>
-                              Enter your email address and we'll send you a link to reset your password.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <form onSubmit={handleForgotPassword} className="space-y-4 py-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="forgotEmail">Email Address</Label>
-                              <Input 
-                                id="forgotEmail" 
-                                type="email" 
-                                placeholder="you@college.edu" 
-                                required 
-                                value={forgotEmail} 
-                                onChange={(e) => setForgotEmail(e.target.value)}
-                              />
-                            </div>
-                            <Button type="submit" className="w-full" disabled={isForgotLoading}>
-                              {isForgotLoading ? "Sending..." : "Send Reset Link"}
-                            </Button>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  )}
+                  <div className="flex justify-end">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button type="button" className="text-sm text-primary hover:underline">
+                          Forgot Password?
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Reset Password</DialogTitle>
+                          <DialogDescription>
+                            Enter your email address and we'll send you a link to reset your password.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={handleForgotPassword} className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="forgotEmail">Email Address</Label>
+                            <Input 
+                              id="forgotEmail" 
+                              type="email" 
+                              placeholder="you@college.edu" 
+                              required 
+                              value={forgotEmail} 
+                              onChange={(e) => setForgotEmail(e.target.value)}
+                            />
+                          </div>
+                          <Button type="submit" className="w-full" disabled={isForgotLoading}>
+                            {isForgotLoading ? "Sending..." : "Send Reset Link"}
+                          </Button>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
 
                   <Button type="submit" variant="hero" className="w-full" disabled={isSubmitting}>
                     {isSubmitting ? (
@@ -363,10 +226,10 @@ const Login = () => {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        {isSignUp ? "Creating Account..." : "Logging in..."}
+                        Logging in...
                       </span>
                     ) : (
-                      isSignUp ? "Create Account" : "Login"
+                      "Login"
                     )}
                   </Button>
                 </form>
