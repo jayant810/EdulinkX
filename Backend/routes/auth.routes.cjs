@@ -6,6 +6,12 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { OAuth2Client } = require("google-auth-library");
 const pool = require("../db.cjs");
+const dns = require("dns");
+
+// Force IPv4 for all network requests in this file (Fixes Render ENETUNREACH)
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jwtscrt';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
