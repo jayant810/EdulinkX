@@ -23,7 +23,7 @@ const notifications = [
 ];
 
 const StudentNotifications = () => {
-  const { userInfo } = useUserInfo();
+  const userInfo = useUserInfo();
   const { studentLinks } = useSidebarLinks();
   const unreadCount = notifications.filter(n => !n.read).length;
 

@@ -33,7 +33,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const StudentSettings = () => {
   const { token } = useAuth();
-  const { userInfo } = useUserInfo();
+  const userInfo = useUserInfo();
   const { studentLinks } = useSidebarLinks();
 
   const [settings, setSettings] = useState({

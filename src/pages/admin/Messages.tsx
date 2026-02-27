@@ -5,7 +5,7 @@ import { useUserInfo } from "@/hooks/useUserInfo";
 import { useSidebarLinks } from "@/hooks/useSidebarLinks";
 
 const AdminMessages = () => {
-  const { userInfo } = useUserInfo();
+  const userInfo = useUserInfo();
   const { adminLinks } = useSidebarLinks();
 
   return (

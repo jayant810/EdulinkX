@@ -42,7 +42,7 @@ export const DashboardLayout = ({
   const navigate = useNavigate();
   const { logout } = useAuth();
   
-  const defaultSidebarLinks = useSidebarLinks();
+  const { sidebarLinks: defaultSidebarLinks } = useSidebarLinks();
   const defaultUserInfo = useUserInfo();
 
   const sidebarLinks = customSidebarLinks || defaultSidebarLinks;
