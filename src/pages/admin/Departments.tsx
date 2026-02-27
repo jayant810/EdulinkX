@@ -235,8 +235,8 @@ const AdminDepartments = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-    </DashboardLayout>
-  </>
-);
+      </DashboardLayout>
+    </>
+  );
+};
 export default AdminDepartments;
