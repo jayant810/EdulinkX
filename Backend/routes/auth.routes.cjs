@@ -20,6 +20,18 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  connectionTimeout: 10000, 
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
+});
+
+// Verify SMTP connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("[SMTP] Connection Error:", error.message);
+  } else {
+    console.log("[SMTP] Server is ready to take our messages");
+  }
 });
 
 function signToken(user) {
@@ -102,18 +114,19 @@ router.post("/change-password", async (req, res) => {
 // Forgot Password (Request Reset)
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
-  console.log(`[Forgot Password] Request received for: ${email}`);
+  console.log(`[Forgot Password] Request START for: ${email}`);
   
   try {
     const [users] = await pool.execute("SELECT id, name FROM users WHERE email = ?", [email]);
     if (!users.length) {
-      console.warn(`[Forgot Password] User not found: ${email}`);
+      console.warn(`[Forgot Password] Email not found: ${email}`);
       return res.status(404).json({ error: "User not found" });
     }
 
     const token = crypto.randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + 3600000); // 1 hour
 
+    console.log("[Forgot Password] Updating token in DB...");
     await pool.execute(
       "UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE id = ?",
       [token, expires, users[0].id]
@@ -121,34 +134,37 @@ router.post("/forgot-password", async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
 
-    // Send response immediately to prevent UI hang
-    res.json({ message: "If an account exists with that email, a reset link has been sent." });
+    console.log("[Forgot Password] Sending success response to client immediately...");
+    res.json({ success: true, message: "Reset link has been sent to your email." });
 
-    // Send email in background
-    transporter.sendMail({
-      from: `"EdulinkX Support" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject: "Password Reset Request",
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
-          <h2>Password Reset</h2>
-          <p>Hello ${users[0].name},</p>
-          <p>You requested a password reset. Click the button below to set a new password:</p>
-          <div style="margin: 20px 0;">
-            <a href="${resetLink}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
+    // Handle email sending in background with a slight delay to ensure the response was sent
+    setTimeout(() => {
+      console.log(`[Forgot Password] Background email dispatch starting for: ${email}`);
+      transporter.sendMail({
+        from: `"EdulinkX Support" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: "Password Reset Request",
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+            <h2>Password Reset</h2>
+            <p>Hello ${users[0].name},</p>
+            <p>You requested a password reset. Click the button below to set a new password:</p>
+            <div style="margin: 20px 0;">
+              <a href="${resetLink}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
+            </div>
+            <p>Or copy this link: <br/> ${resetLink}</p>
+            <p>This link will expire in 1 hour.</p>
           </div>
-          <p>Or copy this link: <br/> ${resetLink}</p>
-          <p>This link will expire in 1 hour.</p>
-        </div>
-      `,
-    }).then(() => {
-      console.log(`[Forgot Password] Email sent successfully to: ${email}`);
-    }).catch(err => {
-      console.error(`[Forgot Password] background email error:`, err.message);
-    });
+        `,
+      }).then(() => {
+        console.log(`[Forgot Password] Email sent successfully to: ${email}`);
+      }).catch(err => {
+        console.error(`[Forgot Password] Email ERROR:`, err.message);
+      });
+    }, 10);
 
   } catch (err) {
-    console.error(`[Forgot Password] DB Error:`, err);
+    console.error(`[Forgot Password] CRITICAL Error:`, err.message);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to process request" });
     }
