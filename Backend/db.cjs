@@ -12,8 +12,9 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false // Required for Supabase
   },
-  connectionTimeoutMillis: 30000, // Increase to 30 seconds
+  connectionTimeoutMillis: 30000, 
   idleTimeoutMillis: 30000,
+  keepAlive: true
 });
 
 // Advanced MySQL to PostgreSQL translation
@@ -22,40 +23,29 @@ pool.execute = async (sql, params = []) => {
   
   // 1. Convert MySQL '?' placeholders to PostgreSQL '$1, $2, ...'
   let paramCount = 1;
-  // Use a regex to find ? that are not inside quotes
-  // Simple approach: loop and replace first occurrence
   while (pgSql.includes('?')) {
     pgSql = pgSql.replace('?', `$${paramCount++}`);
   }
   
   // 2. Replace common MySQL functions/syntax with PG equivalents
-  // Boolean evaluation in SUM: SUM(status='present') -> SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)
-  // Only replace if it doesn't already contain CASE WHEN
   if (!pgSql.toLowerCase().includes('case when')) {
     pgSql = pgSql.replace(/SUM\((.*?)\s*=\s*(.*?)\)/gi, 'SUM(CASE WHEN $1 = $2 THEN 1 ELSE 0 END)');
   }
   
-  // Date functions
   pgSql = pgSql.replace(/MONTH\((.*?)\)/gi, 'EXTRACT(MONTH FROM $1)');
   pgSql = pgSql.replace(/YEAR\((.*?)\)/gi, 'EXTRACT(YEAR FROM $1)');
   pgSql = pgSql.replace(/DAY\((.*?)\)/gi, 'EXTRACT(DAY FROM $1)');
   pgSql = pgSql.replace(/CURDATE\(\)/gi, 'CURRENT_DATE');
   pgSql = pgSql.replace(/NOW\(\)/gi, 'CURRENT_TIMESTAMP');
-  
-  // Other keywords
   pgSql = pgSql.replace(/IFNULL/gi, 'COALESCE');
   pgSql = pgSql.replace(/JSON_EXTRACT/gi, 'JSONB_EXTRACT_PATH');
   pgSql = pgSql.replace(/IF\((.*?),(.*?),(.*?)\)/gi, 'CASE WHEN $1 THEN $2 ELSE $3 END');
-  
-  // LIMIT and OFFSET are same
   
   try {
     const result = await pool.query(pgSql, params);
     return [result.rows, result.fields];
   } catch (err) {
-    // Log the transformed query for debugging if it fails
     console.error("PostgreSQL Query Error:", err.message);
-    console.error("Transformed SQL:", pgSql);
     throw err;
   }
 };
@@ -64,10 +54,16 @@ const initializeDatabase = async () => {
   if (global.dbInitialized) return;
   
   console.log("Checking and initializing database schema...");
-  const client = await pool.connect();
+  
+  // Add a small delay to allow network to settle on cold start
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
+    // ... (rest of the schema creation logic stays same)
     // 1. Types
     await client.query(`
       DO $$ BEGIN
@@ -354,14 +350,12 @@ const initializeDatabase = async () => {
     console.log("Database initialization complete.");
     global.dbInitialized = true;
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error("Database initialization failed:", err);
+    if (client) await client.query('ROLLBACK');
+    console.error("Database initialization failed:", err.message);
+    throw err; // Propagate to stop server startup
   } finally {
-    client.release();
+    if (client) client.release();
   }
 };
 
-// Start initialization automatically
-initializeDatabase();
-
-module.exports = pool;
+module.exports = { pool, initializeDatabase };

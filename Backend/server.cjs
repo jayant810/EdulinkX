@@ -34,7 +34,7 @@ const path = require('path');
 const fs = require('fs');
 
 // --- MySQL pool ---
-const pool = require("./db.cjs");
+const { pool, initializeDatabase } = require("./db.cjs");
 
 // --- JWT helper ---
 const JWT_SECRET = process.env.JWT_SECRET || 'jwtscrt';
@@ -113,6 +113,17 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`Auth server running on port ${PORT}`);
-});
+
+async function start() {
+  try {
+    await initializeDatabase();
+    server.listen(PORT, () => {
+      console.log(`Auth server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("FATAL: Could not start server:", err.message);
+    process.exit(1);
+  }
+}
+
+start();
