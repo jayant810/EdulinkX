@@ -751,16 +751,13 @@ const assignmentRoutes = require("./routes/assignments.routes.cjs");
 const communityRoutes = require("./routes/community.routes.cjs")(io);
 const messageRoutes = require("./routes/messages.routes.cjs")(io);
 const studentRoutes = require("./routes/student.routes.cjs");
-const teacherRoutes = require("./teacher-master-schema.sql"); // Wait, this is an SQL file? Checking...
-
-// Correcting the imports
-const teacherRoutesActual = require("./routes/teacher.routes.cjs");
+const teacherRoutes = require("./routes/teacher.routes.cjs");
 
 app.use("/api", verifyToken, assignmentRoutes);
 app.use("/api", verifyToken, communityRoutes);
 app.use("/api", verifyToken, messageRoutes);
 app.use("/api/student", verifyToken, studentRoutes);
-app.use("/api/teacher", verifyToken, teacherRoutesActual);
+app.use("/api/teacher", verifyToken, teacherRoutes);
 
 // Socket.io room join logic
 io.on("connection", (socket) => {
