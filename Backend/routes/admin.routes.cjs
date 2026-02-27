@@ -139,8 +139,7 @@ router.post("/students/bulk-pdf", upload.single('file'), async (req, res) => {
 
   try {
     const data = await pdf(req.file.buffer);
-    const lines = data.text.split('
-').filter(line => line.trim().length > 0);
+    const lines = data.text.split('\n').filter(line => line.trim().length > 0);
     const students = [];
 
     // Simple parser: skip header if any, expect CSV-like lines in PDF
