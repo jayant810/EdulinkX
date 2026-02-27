@@ -73,10 +73,12 @@ export const useSidebarLinks = () => {
     { icon: Settings, label: "Settings", href: "/student/settings" },
   ];
 
-  return {
+  const sidebarLinks = user?.role === 'admin' ? adminLinks : (user?.role === 'teacher' ? teacherLinks : studentLinks);
+
+  return Object.assign([...sidebarLinks], {
     adminLinks,
     teacherLinks,
     studentLinks,
-    sidebarLinks: user?.role === 'admin' ? adminLinks : (user?.role === 'teacher' ? teacherLinks : studentLinks)
-  };
+    sidebarLinks
+  });
 };
