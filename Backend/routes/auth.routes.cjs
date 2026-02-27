@@ -13,9 +13,9 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Email Transporter (Configure with your SMTP details in .env)
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: process.env.SMTP_PORT || 587,
-  secure: false, 
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, 
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
