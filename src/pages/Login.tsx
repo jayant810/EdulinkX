@@ -54,6 +54,8 @@ const Login = () => {
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isForgotLoading) return; // Prevent double trigger
+    
     setIsForgotLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
@@ -66,6 +68,7 @@ const Login = () => {
       
       toast.success("Reset link sent to your email!");
       setForgotEmail("");
+      setIsForgotOpen(false); // Close dialog on success
     } catch (err: any) {
       toast.error(err.message);
     } finally {
