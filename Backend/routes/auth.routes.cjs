@@ -36,6 +36,68 @@ function signToken(user) {
   );
 }
 
+// Login
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const [rows] = await pool.execute('SELECT * FROM users WHERE email = ?', [email]);
+    if (!rows || rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
+    
+    const user = rows[0];
+    if (!user.password_hash) return res.status(400).json({ error: 'Please login with Google' });
+
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        studentId: user.student_id,
+        employeeCode: user.employee_code
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Signup
+router.post("/signup", async (req, res) => {
+  const { name, email, password, role, studentId, employeeCode } = req.body;
+  try {
+    const [exists] = await pool.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (exists && exists.length > 0) return res.status(409).json({ error: 'User already exists' });
+
+    const hash = await bcrypt.hash(password, 10);
+    const [result] = await pool.execute(
+      `INSERT INTO users (name, email, password_hash, role, student_id, employee_code)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING *`,
+      [name, email, hash, role || 'student', studentId || null, employeeCode || null]
+    );
+
+    const user = result[0];
+    const token = signToken(user);
+    res.status(201).json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        studentId: user.student_id,
+        employeeCode: user.employee_code
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Change Password (from Settings)
 router.post("/auth/change-password", async (req, res) => {
   const { currentPassword, newPassword } = req.body;

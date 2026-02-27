@@ -225,23 +225,25 @@ const Login = () => {
               </CardHeader>
 
               <CardContent className="space-y-6">
-                {/* Role Tabs - Always show for context */}
-                <Tabs value={activeRole} onValueChange={setActiveRole}>
-                  <TabsList className="grid grid-cols-3 w-full">
-                    <TabsTrigger value="student" className="flex items-center gap-1">
-                      <GraduationCap className="h-4 w-4" />
-                      <span className="hidden sm:inline">Student</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="teacher" className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      <span className="hidden sm:inline">Teacher</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="admin" className="flex items-center gap-1">
-                      <Settings className="h-4 w-4" />
-                      <span className="hidden sm:inline">Admin</span>
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                {/* Role Tabs - Only show during Signup */}
+                {isSignUp && (
+                  <Tabs value={activeRole} onValueChange={setActiveRole}>
+                    <TabsList className="grid grid-cols-3 w-full">
+                      <TabsTrigger value="student" className="flex items-center gap-1">
+                        <GraduationCap className="h-4 w-4" />
+                        <span className="hidden sm:inline">Student</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="teacher" className="flex items-center gap-1">
+                        <Users className="h-4 w-4" />
+                        <span className="hidden sm:inline">Teacher</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="admin" className="flex items-center gap-1">
+                        <Settings className="h-4 w-4" />
+                        <span className="hidden sm:inline">Admin</span>
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                )}
 
                 {/* Google Login */}
                 <div className="flex justify-center">
