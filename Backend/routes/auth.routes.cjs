@@ -102,9 +102,14 @@ router.post("/change-password", async (req, res) => {
 // Forgot Password (Request Reset)
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
+  console.log(`[Forgot Password] Request received for: ${email}`);
+  
   try {
     const [users] = await pool.execute("SELECT id, name FROM users WHERE email = ?", [email]);
-    if (!users.length) return res.status(404).json({ error: "User not found" });
+    if (!users.length) {
+      console.warn(`[Forgot Password] User not found: ${email}`);
+      return res.status(404).json({ error: "User not found" });
+    }
 
     const token = crypto.randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + 3600000); // 1 hour
@@ -116,22 +121,37 @@ router.post("/forgot-password", async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
 
-    await transporter.sendMail({
+    // Send response immediately to prevent UI hang
+    res.json({ message: "If an account exists with that email, a reset link has been sent." });
+
+    // Send email in background
+    transporter.sendMail({
       from: `"EdulinkX Support" <${process.env.SMTP_USER}>`,
       to: email,
       subject: "Password Reset Request",
       html: `
-        <p>Hello ${users[0].name},</p>
-        <p>You requested a password reset. Click the link below to set a new password:</p>
-        <a href="${resetLink}">${resetLink}</a>
-        <p>This link will expire in 1 hour.</p>
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
+          <h2>Password Reset</h2>
+          <p>Hello ${users[0].name},</p>
+          <p>You requested a password reset. Click the button below to set a new password:</p>
+          <div style="margin: 20px 0;">
+            <a href="${resetLink}" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
+          </div>
+          <p>Or copy this link: <br/> ${resetLink}</p>
+          <p>This link will expire in 1 hour.</p>
+        </div>
       `,
+    }).then(() => {
+      console.log(`[Forgot Password] Email sent successfully to: ${email}`);
+    }).catch(err => {
+      console.error(`[Forgot Password] background email error:`, err.message);
     });
 
-    res.json({ message: "Reset link sent to your email" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to process request" });
+    console.error(`[Forgot Password] DB Error:`, err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to process request" });
+    }
   }
 });
 
