@@ -233,6 +233,128 @@ router.get("/students", async (req, res) => {
   }
 });
 
+// Get students NOT in any department
+router.get("/students/eligible", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.student_id, sp.semester
+      FROM users u
+      JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE u.role = 'student' AND (sp.department IS NULL OR sp.department = '')
+      ORDER BY u.name ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Remove student from department
+router.post("/departments/remove-student", async (req, res) => {
+  const { studentId } = req.body;
+  try {
+    await pool.query(
+      "UPDATE student_profiles SET department = NULL WHERE student_id = $1",
+      [studentId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Validate bulk students before assignment
+router.post("/departments/validate-bulk", upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  try {
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const excelData = xlsx.utils.sheet_to_json(sheet);
+
+    const validatedStudents = [];
+    for (const row of excelData) {
+      const studentId = row.student_id || row.ID;
+      if (!studentId) continue;
+
+      const { rows: user } = await pool.query(`
+        SELECT u.name, u.student_id, sp.department 
+        FROM users u 
+        JOIN student_profiles sp ON u.id = sp.user_id 
+        WHERE u.student_id = $1`, [studentId]);
+      
+      if (user.length > 0) {
+        validatedStudents.push({
+          student_id: user[0].student_id,
+          name: user[0].name,
+          current_department: user[0].department || "None",
+          already_assigned: !!user[0].department
+        });
+      }
+    }
+    res.json(validatedStudents);
+  } catch (err) {
+    res.status(500).json({ error: "Error validating file" });
+  }
+});
+
+// Process bulk assignment
+router.post("/departments/:deptName/process-bulk", async (req, res) => {
+  const { deptName } = req.params;
+  const { students } = req.body; // Array of { student_id, move: boolean }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const s of students) {
+      if (s.move) {
+        await client.query(
+          "UPDATE student_profiles SET department = $1 WHERE student_id = $2",
+          [deptName, s.student_id]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Server error" });
+  } finally {
+    client.release();
+  }
+});
+
+// Add single student to department
+router.post("/departments/:deptName/add-student", async (req, res) => {
+  const { deptName } = req.params;
+  const { studentId } = req.body;
+  try {
+    await pool.query(
+      "UPDATE student_profiles SET department = $1 WHERE student_id = $2",
+      [deptName, studentId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Get students in a specific department
+router.get("/departments/:deptName/students", async (req, res) => {
+  const { deptName } = req.params;
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.student_id, sp.semester, sp.academic_status
+      FROM users u
+      JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE sp.department = $1
+      ORDER BY u.name ASC
+    `, [deptName]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // 2. Get student details
 router.get("/students/:id", async (req, res) => {
   try {
