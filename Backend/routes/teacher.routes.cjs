@@ -4,12 +4,124 @@ const { pool } = require("../db.cjs");
 const path = require("path");
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const xlsx = require("xlsx");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
 
 function getModel(modelName) {
   return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
 }
+
+// --- Bulk Operations ---
+
+// 1. Bulk Courses
+router.post("/bulk-courses", async (req, res) => {
+  const teacherId = req.user.id;
+  const { courses } = req.body; // Array of { course_name, course_code, course_description, credits, course_timing }
+
+  if (!Array.isArray(courses)) return res.status(400).json({ error: "Invalid data format" });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const c of courses) {
+      const { rows } = await client.query(
+        "INSERT INTO courses (course_name, course_code, course_description, credits, course_timing) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (course_code) DO UPDATE SET course_name = EXCLUDED.course_name RETURNING id",
+        [c.course_name, c.course_code, c.course_description || "", c.credits || 0, c.course_timing || ""]
+      );
+      const courseId = rows[0].id;
+      // Link to teacher
+      await client.query(
+        "INSERT INTO course_teachers (course_id, teacher_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [courseId, teacherId]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, message: `Successfully processed ${courses.length} courses` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Server error", details: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 2. Bulk Assign Students
+router.post("/courses/:courseId/bulk-assign", async (req, res) => {
+  const teacherId = req.user.id;
+  const { courseId } = req.params;
+  const { studentIds } = req.body; // Array of student_id strings (e.g., STU001)
+
+  if (!Array.isArray(studentIds)) return res.status(400).json({ error: "Invalid data format" });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Verify ownership
+    const { rows: owner } = await client.query("SELECT id FROM course_teachers WHERE course_id = $1 AND teacher_user_id = $2", [courseId, teacherId]);
+    if (owner.length === 0) throw new Error("Not authorized");
+
+    for (const sid of studentIds) {
+      const { rows: user } = await client.query("SELECT id FROM users WHERE student_id = $1", [sid]);
+      if (user.length > 0) {
+        await client.query(
+          "INSERT INTO course_students (course_id, student_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [courseId, user[0].id]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, message: `Successfully assigned ${studentIds.length} students` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Server error", details: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 3. Bulk Attendance
+router.post("/attendance/bulk", async (req, res) => {
+  const teacherId = req.user.id;
+  const { courseId, date, attendance } = req.body; // attendance: Array of { student_id, status }
+
+  if (!Array.isArray(attendance)) return res.status(400).json({ error: "Invalid data format" });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Verify ownership
+    const { rows: owner } = await client.query("SELECT id FROM course_teachers WHERE course_id = $1 AND teacher_user_id = $2", [courseId, teacherId]);
+    if (owner.length === 0) throw new Error("Not authorized");
+
+    // Get or create session
+    let sessionId;
+    const { rows: session } = await client.query("SELECT id FROM attendance_sessions WHERE course_id = $1 AND class_date = $2", [courseId, date]);
+    if (session.length > 0) {
+      sessionId = session[0].id;
+    } else {
+      const { rows: newSession } = await client.query("INSERT INTO attendance_sessions (course_id, teacher_user_id, class_date) VALUES ($1, $2, $3) RETURNING id", [courseId, teacherId, date]);
+      sessionId = newSession[0].id;
+    }
+
+    for (const record of attendance) {
+      const { rows: user } = await client.query("SELECT id FROM users WHERE student_id = $1", [record.student_id]);
+      if (user.length > 0) {
+        await client.query(
+          "INSERT INTO attendance_records (session_id, student_user_id, status) VALUES ($1, $2, $3) ON CONFLICT (session_id, student_user_id) DO UPDATE SET status = EXCLUDED.status",
+          [sessionId, user[0].id, record.status === 'present' ? 'present' : 'absent']
+        );
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, message: `Successfully processed attendance for ${attendance.length} students` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Server error", details: err.message });
+  } finally {
+    client.release();
+  }
+});
 
 // Helper to generate summary
 async function generateSummary(title, subTitle) {

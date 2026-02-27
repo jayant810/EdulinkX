@@ -8,12 +8,18 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
+import { BulkUpload } from "@/components/shared/BulkUpload";
 import { 
   ChevronLeft, PlayCircle, Plus, FileText, Upload, Trash2, 
   Clock, CheckCircle2, Pause, Play, Save, Sparkles, Brain 
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+
+const studentAssignTemplate = [
+  { student_id: "STU001" },
+  { student_id: "STU002" }
+];
 
 export default function ManageCourse() {
   const { courseId } = useParams();
@@ -76,6 +82,33 @@ export default function ManageCourse() {
   useEffect(() => {
     loadData();
   }, [courseId, token]);
+
+  const handleBulkAssignStudents = async (data: any[]) => {
+    try {
+      const studentIds = data.map(item => item.student_id).filter(id => id);
+      if (studentIds.length === 0) {
+        toast.error("No valid student IDs found in Excel");
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/api/teacher/courses/${courseId}/bulk-assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ studentIds })
+      });
+
+      if (!res.ok) throw new Error("Bulk assignment failed");
+
+      toast.success(`Successfully assigned ${studentIds.length} students`);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to assign students");
+      console.error(err);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -200,9 +233,17 @@ export default function ManageCourse() {
         title={course.course_name}
         subtitle={`${course.course_code} • Curriculum Management`}
         headerActions={
-          <Button variant="outline" size="sm" onClick={() => navigate("/teacher/courses")}>
-            <ChevronLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/teacher/courses")}>
+              <ChevronLeft className="h-4 w-4 mr-1" /> Back
+            </Button>
+            <BulkUpload 
+              onUpload={handleBulkAssignStudents} 
+              templateData={studentAssignTemplate} 
+              templateFileName="student_assign_template.xlsx"
+              buttonText="Bulk Assign Students"
+            />
+          </div>
         }
       >
         <div className="space-y-6 max-w-7xl mx-auto">

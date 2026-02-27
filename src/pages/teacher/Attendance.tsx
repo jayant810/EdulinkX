@@ -15,8 +15,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
+import { BulkUpload } from "@/components/shared/BulkUpload";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+
+const attendanceTemplate = [
+  { student_id: "STU001", status: "present" },
+  { student_id: "STU002", status: "absent" }
+];
 
 const TeacherAttendance = () => {
   const { token } = useAuth();
@@ -28,30 +34,15 @@ const TeacherAttendance = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!token) return;
-    // Load courses
-    fetch(`${API_BASE}/api/teacher/courses`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setCourses(data);
-        if (data.length > 0) {
-          const firstCourseId = String(data[0].id);
-          setSelectedCourse(firstCourseId);
-        }
-      });
-
-    // Load history
+  const loadHistory = () => {
     fetch(`${API_BASE}/api/teacher/attendance/history`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => setHistory(Array.isArray(data) ? data : []));
-  }, [token]);
+  };
 
-  useEffect(() => {
+  const loadStudents = () => {
     if (!token || !selectedCourse || !selectedDate) {
       setStudents([]);
       return;
@@ -75,10 +66,63 @@ const TeacherAttendance = () => {
         console.error("Error loading students:", err);
         setStudents([]);
       });
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    // Load courses
+    fetch(`${API_BASE}/api/teacher/courses`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setCourses(data);
+        if (data.length > 0) {
+          const firstCourseId = String(data[0].id);
+          setSelectedCourse(firstCourseId);
+        }
+      });
+
+    loadHistory();
+  }, [token]);
+
+  useEffect(() => {
+    loadStudents();
   }, [selectedCourse, selectedDate, token]);
 
   const handleToggle = (id: string) => {
     setAttendance(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleBulkAttendance = async (data: any[]) => {
+    if (!selectedCourse || !selectedDate) {
+      toast.error("Please select a course and date first");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/attendance/bulk`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          courseId: selectedCourse,
+          date: selectedDate,
+          attendance: data
+        })
+      });
+
+      if (!res.ok) throw new Error("Bulk attendance upload failed");
+
+      toast.success(`Successfully uploaded attendance for ${data.length} students`);
+      loadStudents();
+      loadHistory();
+    } catch (err) {
+      toast.error("Failed to upload attendance");
+      console.error(err);
+    }
   };
 
   const handleSubmitAttendance = async () => {
@@ -101,13 +145,7 @@ const TeacherAttendance = () => {
       if (!res.ok) throw new Error("Failed to submit");
 
       toast.success("Attendance updated successfully");
-      
-      // Refresh history
-      fetch(`${API_BASE}/api/teacher/attendance/history`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(setHistory);
+      loadHistory();
         
     } catch (err) {
       toast.error("Error submitting attendance");
@@ -127,6 +165,14 @@ const TeacherAttendance = () => {
       <DashboardLayout
         title="Attendance"
         subtitle="Mark and manage class attendance"
+        headerActions={
+          <BulkUpload 
+            onUpload={handleBulkAttendance} 
+            templateData={attendanceTemplate} 
+            templateFileName="attendance_template.xlsx"
+            buttonText="Bulk Upload Attendance"
+          />
+        }
       >
         <div className="space-y-6">
           <Tabs defaultValue="mark" className="space-y-4">

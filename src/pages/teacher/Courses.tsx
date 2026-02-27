@@ -13,21 +13,53 @@ import {
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthProvider";
+import { BulkUpload } from "@/components/shared/BulkUpload";
+import { toast } from "sonner";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
+
+const courseTemplate = [
+  { course_name: "Introduction to React", course_code: "CS101", course_description: "Learn the basics of React", credits: 3, course_timing: "Mon/Wed 10:00 AM" },
+  { course_name: "Advanced Node.js", course_code: "CS201", course_description: "Deep dive into Node.js", credits: 4, course_timing: "Tue/Thu 2:00 PM" }
+];
 
 const TeacherCourses = () => {
   const { token } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
 
-  useEffect(() => {
+  const loadCourses = () => {
     if (!token) return;
     fetch(`${API_BASE}/api/teacher/courses`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => setCourses(Array.isArray(data) ? data : []));
+  };
+
+  useEffect(() => {
+    loadCourses();
   }, [token]);
+
+  const handleBulkUpload = async (data: any[]) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/bulk-courses`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ courses: data })
+      });
+
+      if (!res.ok) throw new Error("Bulk upload failed");
+
+      toast.success(`Successfully uploaded ${data.length} courses`);
+      loadCourses();
+    } catch (err) {
+      toast.error("Failed to upload courses");
+      console.error(err);
+    }
+  };
 
   return (
     <>
@@ -38,6 +70,14 @@ const TeacherCourses = () => {
       <DashboardLayout
         title="My Courses"
         subtitle="Manage your courses and content"
+        headerActions={
+          <BulkUpload 
+            onUpload={handleBulkUpload} 
+            templateData={courseTemplate} 
+            templateFileName="courses_template.xlsx"
+            buttonText="Bulk Upload Courses"
+          />
+        }
       >
         <div className="space-y-6">
           {/* Stats */}
