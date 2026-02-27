@@ -157,7 +157,8 @@ const initializeDatabase = async () => {
         course_code VARCHAR(50) UNIQUE NOT NULL,
         course_description TEXT,
         credits INT DEFAULT 0,
-        course_timing VARCHAR(255)
+        course_timing VARCHAR(255),
+        department VARCHAR(100) -- New column
       );
 
       CREATE TABLE IF NOT EXISTS course_students (
