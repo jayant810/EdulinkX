@@ -59,10 +59,12 @@ import AdminFees from "./pages/admin/Fees";
 import AdminAnnouncements from "./pages/admin/Announcements";
 import AdminRoles from "./pages/admin/Roles";
 import AdminSettings from "./pages/admin/Settings";
+import AdminMessages from "./pages/admin/Messages";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { CommunityStoreProvider } from "./lib/communityStore";
+import { MessageStoreProvider } from "./lib/messageStore";
 
 // Community Pages
 import CommunityFeed from "./pages/shared/CommunityFeed";
@@ -102,8 +104,9 @@ const App = () => (
 
         <AuthProvider>
           <CommunityStoreProvider>
-            <BrowserRouter>
-              <Routes>
+            <MessageStoreProvider>
+              <BrowserRouter>
+                <Routes>
                 {/* Public Routes */}
                 <Route element={<PublicLayout />}>
                   <Route path="/" element={<Index />} />
@@ -450,6 +453,14 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/admin/messages"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <AdminMessages />
+                  </ProtectedRoute>
+                }
+              />
               <Route 
                 path="/student/course/:courseId" 
                 element={<StudentCoursePlayer />} 
@@ -463,8 +474,9 @@ const App = () => (
                               <Route path="*" element={<NotFound />} />
                             </Routes>
                           </BrowserRouter>
-                        </CommunityStoreProvider>
-                      </AuthProvider>      </TooltipProvider>
+                        </MessageStoreProvider>
+                      </CommunityStoreProvider>
+                    </AuthProvider>      </TooltipProvider>
     </QueryClientProvider>
   </HelmetProvider>
 );

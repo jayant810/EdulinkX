@@ -4,20 +4,20 @@ import { MessageInterface } from "@/components/shared/MessageInterface";
 import { useUserInfo } from "@/hooks/useUserInfo";
 import { useSidebarLinks } from "@/hooks/useSidebarLinks";
 
-const TeacherMessages = () => {
+const AdminMessages = () => {
   const { userInfo } = useUserInfo();
-  const { teacherLinks } = useSidebarLinks();
+  const { adminLinks } = useSidebarLinks();
 
   return (
     <>
       <Helmet>
-        <title>Messages - EdulinkX</title>
+        <title>Messages - EdulinkX Admin</title>
       </Helmet>
       <DashboardLayout
-        sidebarLinks={teacherLinks}
+        sidebarLinks={adminLinks}
         userInfo={userInfo}
         title="Messages"
-        subtitle="Communicate with students and staff"
+        subtitle="Manage communication across the institution"
       >
         <MessageInterface />
       </DashboardLayout>
@@ -25,4 +25,4 @@ const TeacherMessages = () => {
   );
 };
 
-export default TeacherMessages;
+export default AdminMessages;
