@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const xlsx = require("xlsx");
+const { getDriveService, getOrCreateFolder, uploadFile } = require("../utils/googleDrive.cjs");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -300,9 +301,50 @@ router.post("/courses/:courseId/lectures", async (req, res) => {
   const teacherId = req.user.id;
   const { courseId } = req.params;
   let { title, sub_title, video_url, notes_url, lecture_order, is_interactive, interactions, video_type, ai_summary } = req.body;
+  
   try {
     const [[owner]] = await pool.execute("SELECT id FROM course_teachers WHERE course_id = ? AND teacher_user_id = ?", [courseId, teacherId]);
     if (!owner) return res.status(403).json({ error: "Not authorized" });
+
+    // --- GOOGLE DRIVE AUTO-UPLOAD ---
+    if (video_type === 'local' && video_url && video_url.startsWith('/uploads/')) {
+      try {
+        console.log(`[Google Drive] Starting auto-upload for: ${video_url}`);
+        const drive = await getDriveService();
+        if (drive) {
+          // 1. Get Course & Department Info for folder structure
+          const [[courseInfo]] = await pool.execute("SELECT course_name, department FROM courses WHERE id = ?", [courseId]);
+          const deptName = courseInfo?.department || "General";
+          const courseName = courseInfo?.course_name || `Course-${courseId}`;
+
+          // 2. Build Folder Hierarchy: EdulinkX -> [Department] -> [Course]
+          const rootId = await getOrCreateFolder(drive, "EdulinkX");
+          const deptId = await getOrCreateFolder(drive, deptName, rootId);
+          const courseFolderId = await getOrCreateFolder(drive, courseName, deptId);
+
+          // 3. Upload File
+          const localFilePath = path.join(__dirname, '../public', video_url);
+          if (fs.existsSync(localFilePath)) {
+            const uploadResult = await uploadFile(localFilePath, `${title || 'Lecture'}-${Date.now()}.mp4`, courseFolderId);
+            
+            if (uploadResult) {
+              console.log(`[Google Drive] Upload successful. ID: ${uploadResult.id}`);
+              // Update video_url to the Google Drive stream URL
+              video_url = uploadResult.url;
+              // Switch type to 'url' because it's now hosted externally
+              video_type = 'url';
+              
+              // 4. Cleanup local file
+              fs.unlinkSync(localFilePath);
+              console.log(`[Google Drive] Local file deleted: ${localFilePath}`);
+            }
+          }
+        }
+      } catch (driveErr) {
+        console.error("[Google Drive] Auto-upload failed, falling back to local:", driveErr.message);
+        // Fallback: keep it as local if Drive fails
+      }
+    }
 
     // Auto-generate summary if missing
     if (!ai_summary && title) {
@@ -313,7 +355,7 @@ router.post("/courses/:courseId/lectures", async (req, res) => {
       "INSERT INTO course_lectures (course_id, title, sub_title, video_url, notes_url, lecture_order, is_interactive, interactions, video_type, ai_summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [courseId, title, sub_title, video_url, notes_url || null, lecture_order || 1, is_interactive || false, JSON.stringify(interactions) || null, video_type || 'url', ai_summary || null]
     );
-    res.status(201).json({ message: "Lecture added successfully with AI summary" });
+    res.status(201).json({ message: "Lecture added successfully (Processed by Google Drive)" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
