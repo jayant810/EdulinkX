@@ -9,7 +9,7 @@ const xlsx = require("xlsx");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function getModel(modelName) {
-  return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
+  return genAI.getGenerativeModel({ model: modelName });
 }
 
 // --- Bulk Operations ---

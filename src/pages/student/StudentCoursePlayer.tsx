@@ -213,7 +213,12 @@ const StudentCoursePlayer = () => {
 
   const getVideoSrc = (lecture: any) => {
     if (!lecture) return "";
-    return lecture.video_type === 'local' ? `${API_BASE}${lecture.video_url}` : lecture.video_url;
+    if (lecture.video_type === 'local') {
+      const baseUrl = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+      const videoPath = lecture.video_url.startsWith('/') ? lecture.video_url : `/${lecture.video_url}`;
+      return `${baseUrl}${videoPath}`;
+    }
+    return lecture.video_url;
   };
 
   const interactionsList = () => {

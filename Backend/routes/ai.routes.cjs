@@ -6,7 +6,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function getModel(modelName) {
-  return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
+  return genAI.getGenerativeModel({ model: modelName });
 }
 
 // 1. Get previous AI queries for a course
