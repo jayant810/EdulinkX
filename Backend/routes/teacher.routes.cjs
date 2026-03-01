@@ -6,7 +6,7 @@ const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const xlsx = require("xlsx");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function getModel(modelName) {
   return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });

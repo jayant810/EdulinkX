@@ -3,7 +3,7 @@ const router = express.Router();
 const { pool } = require("../db.cjs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBmvOCu_n0ytqPrkKHu9b7ME0BO0Ou3-7E");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function getModel(modelName) {
   return genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
