@@ -5,35 +5,46 @@ const path = require('path');
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
 async function getDriveService() {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+  if (clientId && clientSecret && refreshToken) {
+    // --- METHOD 1: OAuth2 (For Personal 2TB Accounts) ---
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'https://developers.google.com/oauthplayground');
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    console.log("[Google Drive] Initialized using OAuth2 (Personal Account).");
+    return google.drive({ version: 'v3', auth: oauth2Client });
+  } 
+  
   const credentialsRaw = process.env.GOOGLE_CREDENTIALS;
-  if (!credentialsRaw) {
-    console.warn("[Google Drive] GOOGLE_CREDENTIALS missing.");
-    return null;
+  if (credentialsRaw) {
+    // --- METHOD 2: Service Account (Fallback) ---
+    try {
+      let cleaned = credentialsRaw.trim();
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.substring(1, cleaned.length - 1);
+      const credentials = JSON.parse(cleaned);
+      const auth = new google.auth.GoogleAuth({ credentials, scopes: SCOPES });
+      console.log("[Google Drive] Initialized using Service Account.");
+      return google.drive({ version: 'v3', auth });
+    } catch (err) {
+      console.error("[Google Drive] Service Account Auth Error:", err.message);
+    }
   }
-  try {
-    let cleaned = credentialsRaw.trim();
-    if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.substring(1, cleaned.length - 1);
-    const credentials = JSON.parse(cleaned);
-    const auth = new google.auth.GoogleAuth({ credentials, scopes: SCOPES });
-    return google.drive({ version: 'v3', auth });
-  } catch (err) {
-    console.error("[Google Drive] Auth Error:", err.message);
-    return null;
-  }
+
+  console.warn("[Google Drive] Auth failed: Missing OAuth2 tokens or Service Account credentials.");
+  return null;
 }
 
 async function getOrCreateFolder(drive, folderName, parentId = null) {
   try {
     const envRootId = process.env.GOOGLE_DRIVE_PARENT_ID;
-    // We MUST have a parentId (either passed or from env) to avoid the "Quota" error
     const targetParentId = parentId || envRootId;
 
-    if (!targetParentId) {
-      console.error("[Google Drive] ERROR: No Parent Folder ID provided. Service accounts require a shared folder to use your storage quota.");
-      return null;
+    let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+    if (targetParentId) {
+      query += ` and '${targetParentId}' in parents`;
     }
-
-    let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '${targetParentId}' in parents`;
 
     const response = await drive.files.list({
       q: query,
@@ -50,7 +61,7 @@ async function getOrCreateFolder(drive, folderName, parentId = null) {
       resource: {
         name: folderName,
         mimeType: 'application/vnd.google-apps.folder',
-        parents: [targetParentId],
+        parents: targetParentId ? [targetParentId] : [],
       },
       fields: 'id',
       supportsAllDrives: true
@@ -68,15 +79,10 @@ async function uploadFile(filePath, fileName, folderId) {
   const drive = await getDriveService();
   if (!drive) return null;
 
-  if (!folderId) {
-    console.error("[Google Drive] Upload blocked: folderId is missing. Check if GOOGLE_DRIVE_PARENT_ID is set in Render.");
-    return null;
-  }
-
   try {
     const fileMetadata = {
       name: fileName,
-      parents: [folderId],
+      parents: folderId ? [folderId] : [],
     };
 
     const media = {
@@ -90,6 +96,7 @@ async function uploadFile(filePath, fileName, folderId) {
       supportsAllDrives: true
     });
 
+    // Make file publicly readable for streaming
     await drive.permissions.create({
       fileId: file.data.id,
       resource: { role: 'reader', type: 'anyone' },
@@ -103,11 +110,7 @@ async function uploadFile(filePath, fileName, folderId) {
       viewLink: file.data.webViewLink,
     };
   } catch (err) {
-    if (err.message.includes("quota")) {
-      console.error("[Google Drive] QUOTA ERROR: The Service Account is trying to use its own 0GB storage. Ensure the folder ID in GOOGLE_DRIVE_PARENT_ID is shared with the service account as an 'Editor'.");
-    } else {
-      console.error(`[Google Drive] UPLOAD ERROR:`, err.message);
-    }
+    console.error(`[Google Drive] UPLOAD ERROR:`, err.message);
     return null;
   }
 }
