@@ -218,16 +218,25 @@ const StudentAttendance = () => {
             {/* Subject-wise */}
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Subject-wise Attendance</CardTitle>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Subject-wise Attendance</CardTitle>
+                  {selectedCourse && (
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedCourse(null)}>
+                      Clear Filter
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {subjects.map((subject: any, index: number) => (
                     <div
                       key={index}
-                      onClick={() => setSelectedCourse(subject.course_id)}
-                      className={`p-4 rounded-lg cursor-pointer transition bg-muted/50 
-                        ${selectedCourse === subject.course_id ? "ring-2 ring-primary" : ""}`}
+                      onClick={() => setSelectedCourse(selectedCourse === subject.id ? null : subject.id)}
+                      className={`p-4 rounded-lg cursor-pointer transition border
+                        ${selectedCourse === subject.id 
+                          ? "ring-2 ring-primary bg-primary/5 border-primary" 
+                          : "bg-muted/50 border-transparent hover:border-muted-foreground/20"}`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div>
@@ -242,7 +251,7 @@ const StudentAttendance = () => {
                             {subject.percentage}%
                           </Badge>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {subject.present}/{subject.total} classes
+                            {subject.present_classes || 0}/{subject.total_classes || 0} classes
                           </p>
                         </div>
                       </div>
