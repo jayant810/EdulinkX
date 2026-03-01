@@ -161,6 +161,8 @@ const initializeDatabase = async () => {
         department VARCHAR(100) -- New column
       );
 
+      ALTER TABLE courses ADD COLUMN IF NOT EXISTS department VARCHAR(100);
+
       CREATE TABLE IF NOT EXISTS course_students (
         id SERIAL PRIMARY KEY,
         course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,

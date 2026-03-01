@@ -197,21 +197,21 @@ router.get("/courses", async (req, res) => {
 });
 
 router.post("/courses", async (req, res) => {
-  let { name, code, description, credits, timing, department } = req.body;
-  console.log("[POST /courses] Received:", { name, code, department });
+  let { course_name, course_code, course_description, credits, course_timing, department } = req.body;
+  console.log("[POST /courses] Received:", { course_name, course_code, department });
   try {
-    if (!code) {
+    if (!course_code) {
       if (!department) {
         return res.status(400).json({ error: "Department is required for auto-generating course code" });
       }
-      code = await generateCourseCode(department);
-      console.log("[POST /courses] Generated code:", code);
+      course_code = await generateCourseCode(department);
+      console.log("[POST /courses] Generated code:", course_code);
     }
     
     // Using pool.execute for better MySQL->PG translation and consistency
     const [rows] = await pool.execute(
       "INSERT INTO courses (course_name, course_code, course_description, credits, course_timing, department) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
-      [name, code, description || "", credits || 0, timing || "", department]
+      [course_name, course_code, course_description || "", credits || 0, course_timing || "", department]
     );
     
     console.log("[POST /courses] Success:", rows[0]);
