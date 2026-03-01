@@ -24,6 +24,7 @@ const StudentAttendance = () => {
 
   const [subjects, setSubjects] = useState([]);
   const [calendarDays, setCalendarDays] = useState([]);
+  const [holidays, setHolidays] = useState<any[]>([]);
 
   useEffect(() => {
     if (!token) return;
@@ -46,6 +47,12 @@ const StudentAttendance = () => {
       .then(res => res.json())
       .then(data => setSubjects(data));
 
+    fetch(`${API_BASE}/api/student/holidays`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setHolidays(data));
+
   }, [token]);
 
   useEffect(() => {
@@ -67,21 +74,37 @@ const StudentAttendance = () => {
         });
 
         const calendarArray = [];
-        // Add empty cells for days of the week before the 1st
         for (let i = 0; i < firstDayOfMonth; i++) {
-          calendarArray.push({ day: 0, status: "none" });
+          calendarArray.push({ day: 0, status: "none", title: "" });
         }
 
         for (let i = 1; i <= daysInMonth; i++) {
+          const dateStr = `${currentYear}-${(currentMonth + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+          const dateObj = new Date(currentYear, currentMonth, i);
+          const dayOfWeek = dateObj.getDay();
+          
+          // Check if it's a weekend (Sat=6, Sun=0)
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          
+          // Check if it's a holiday in DB
+          const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
+          
+          let status = attendanceMap[i] || "working";
+          if (!attendanceMap[i]) {
+            if (holiday || isWeekend) status = "holiday";
+            else status = "no-class";
+          }
+
           calendarArray.push({
             day: i,
-            status: attendanceMap[i] || "holiday"
+            status: status,
+            title: holiday ? holiday.title : (isWeekend ? "Weekend" : "")
           });
         }
         setCalendarDays(calendarArray);
       });
 
-  }, [currentMonth, currentYear, selectedCourse, token]);
+  }, [currentMonth, currentYear, selectedCourse, token, holidays]);
 
   return (
     <>

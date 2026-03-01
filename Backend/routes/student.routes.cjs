@@ -148,43 +148,15 @@ router.get("/attendance/calendar", async (req, res) => {
 
 // 6.5 Attendance Summary
 router.get("/attendance/summary", async (req, res) => {
-  const studentId = req.user.id;
+... (summary logic) ...
+});
+
+// 6.6 Holidays
+router.get("/holidays", async (req, res) => {
   try {
-    // Overall Stats
-    const [[stats]] = await pool.execute(`
-      SELECT 
-        COUNT(*) as total_classes,
-        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count
-      FROM attendance_records 
-      WHERE student_user_id = ?`, [studentId]);
-
-    // Breakdown by subject
-    const [breakdown] = await pool.execute(`
-      SELECT c.course_name as subject,
-             COUNT(r.id) as total,
-             SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) as present
-      FROM courses c
-      JOIN course_students cs ON cs.course_id = c.id
-      LEFT JOIN attendance_sessions s ON s.course_id = c.id
-      LEFT JOIN attendance_records r ON r.session_id = s.id AND r.student_user_id = ?
-      WHERE cs.student_user_id = ?
-      GROUP BY c.id, c.course_name`, [studentId, studentId]);
-
-    const totalClasses = parseInt(stats?.total_classes || 0);
-    const presentCount = parseInt(stats?.present_count || 0);
-
-    res.json({
-      overall: totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0,
-      present: presentCount,
-      absent: totalClasses - presentCount,
-      total: totalClasses,
-      breakdown: breakdown.map(b => ({
-        subject: b.subject,
-        percentage: parseInt(b.total) > 0 ? Math.round((parseInt(b.present) / parseInt(b.total)) * 100) : 0
-      }))
-    });
+    const { rows } = await pool.query("SELECT holiday_date, title, description, is_weekend FROM holidays ORDER BY holiday_date ASC");
+    res.json(rows);
   } catch (err) {
-    console.error("[Attendance Summary] Error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });

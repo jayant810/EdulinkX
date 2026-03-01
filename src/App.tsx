@@ -59,6 +59,7 @@ import AdminExams from "./pages/admin/Exams";
 import AdminFees from "./pages/admin/Fees";
 import AdminAnnouncements from "./pages/admin/Announcements";
 import AdminRoles from "./pages/admin/Roles";
+import AdminHolidays from "./pages/admin/Holidays";
 import AdminSettings from "./pages/admin/Settings";
 import AdminMessages from "./pages/admin/Messages";
 
@@ -445,6 +446,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
                     <AdminRoles />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/holidays"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <AdminHolidays />
                   </ProtectedRoute>
                 }
               />

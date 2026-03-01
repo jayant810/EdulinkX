@@ -342,6 +342,34 @@ const initializeDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS holidays (
+        id SERIAL PRIMARY KEY,
+        holiday_date DATE UNIQUE NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        is_weekend BOOLEAN DEFAULT FALSE
+      );
+
+      -- Seed 2026 Holidays
+      INSERT INTO holidays (holiday_date, title) VALUES 
+      ('2026-01-01', 'New Year''s Day'),
+      ('2026-01-26', 'Republic Day'),
+      ('2026-03-04', 'Holi'),
+      ('2026-03-21', 'Id-ul-Fitr / Ramzan Eid'),
+      ('2026-03-26', 'Ram Navami'),
+      ('2026-03-31', 'Mahavir Jayanti'),
+      ('2026-04-03', 'Good Friday'),
+      ('2026-05-01', 'Buddha Purnima'),
+      ('2026-05-27', 'Id-ul-Zuha / Bakrid'),
+      ('2026-06-26', 'Muharram/Ashura'),
+      ('2026-08-15', 'Independence Day'),
+      ('2026-08-26', 'Id-e-Milad'),
+      ('2026-10-02', 'Gandhi Jayanti'),
+      ('2026-11-08', 'Diwali / Deepavali'),
+      ('2026-11-24', 'Guru Nanak Jayanti'),
+      ('2026-12-25', 'Christmas Day')
+      ON CONFLICT (holiday_date) DO NOTHING;
+
       CREATE TABLE IF NOT EXISTS departments (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) UNIQUE NOT NULL,
