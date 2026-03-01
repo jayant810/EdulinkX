@@ -75,9 +75,11 @@ async function generateCourseCode(deptName) {
 
   // "the number will be counting for any department" - global count
   const { rows } = await pool.query("SELECT COUNT(*) as count FROM courses");
-  const nextSeq = parseInt(rows[0].count) + 1;
-
-  return `${prefix}${nextSeq.toString().padStart(3, '0')}`;
+  const count = parseInt(rows[0].count) || 0;
+  const nextSeq = count + 1;
+  const finalCode = `${prefix}${nextSeq.toString().padStart(3, '0')}`;
+  console.log(`[generateCourseCode] Dept: ${deptName}, Prefix: ${prefix}, Count: ${count}, Final: ${finalCode}`);
+  return finalCode;
 }
 
 // Middleware: Check if user is admin
