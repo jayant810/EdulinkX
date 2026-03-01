@@ -267,7 +267,9 @@ const AdminCourses = () => {
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase">Course Code</label>
-                  <Input value={courseForm.course_code} onChange={e => setCourseForm({...courseForm, course_code: e.target.value})} placeholder="e.g. CS301" />
+                  <div className="p-2 bg-muted rounded-md text-sm font-mono border h-10 flex items-center">
+                    {courseForm.course_code || <span className="text-muted-foreground italic">Select department...</span>}
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
