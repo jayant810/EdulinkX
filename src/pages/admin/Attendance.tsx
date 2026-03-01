@@ -1,45 +1,164 @@
+import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { BarChart3, Users, GraduationCap, Building2, BookOpen, Calendar, FileText, DollarSign, Bell, Shield, Settings } from "lucide-react";
+import { useAuth } from "@/auth/AuthProvider";
+import { useUserInfo } from "@/hooks/useUserInfo";
+import { useSidebarLinks } from "@/hooks/useSidebarLinks";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const sidebarLinks = [
-  { icon: BarChart3, label: "Dashboard", href: "/admin/dashboard" },
-  { icon: Users, label: "Students", href: "/admin/students" },
-  { icon: GraduationCap, label: "Teachers", href: "/admin/teachers" },
-  { icon: Building2, label: "Departments", href: "/admin/departments" },
-  { icon: BookOpen, label: "Courses", href: "/admin/courses" },
-  { icon: Calendar, label: "Attendance", href: "/admin/attendance" },
-  { icon: FileText, label: "Exams", href: "/admin/exams" },
-  { icon: DollarSign, label: "Fees", href: "/admin/fees" },
-  { icon: Bell, label: "Announcements", href: "/admin/announcements" },
-  { icon: Shield, label: "Roles & Access", href: "/admin/roles" },
-  { icon: Settings, label: "Settings", href: "/admin/settings" },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
-const deptAttendance = [
-  { name: "Computer Science", percentage: 89 },
-  { name: "Electronics", percentage: 85 },
-  { name: "Mechanical", percentage: 82 },
-  { name: "Civil", percentage: 88 },
-];
+const AdminAttendance = () => {
+  const { token } = useAuth();
+  const userInfo = useUserInfo();
+  const { adminLinks } = useSidebarLinks();
 
-const AdminAttendance = () => (
-  <>
-    <Helmet><title>Attendance - EdulinkX Admin</title></Helmet>
-    <DashboardLayout sidebarLinks={sidebarLinks} userInfo={{ name: "Admin User", id: "Super Admin", initials: "AD", gradientFrom: "from-warning", gradientTo: "to-destructive" }} title="Attendance" subtitle="Institution-wide attendance overview">
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card variant="stat" className="border-l-success"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Overall Attendance</p><p className="text-2xl font-bold text-success">86%</p></CardContent></Card>
-          <Card variant="stat" className="border-l-warning"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Below 75%</p><p className="text-2xl font-bold text-warning">142</p></CardContent></Card>
-          <Card variant="stat" className="border-l-primary"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Today's Present</p><p className="text-2xl font-bold text-primary">2,180</p></CardContent></Card>
-          <Card variant="stat" className="border-l-destructive"><CardContent className="p-4"><p className="text-sm text-muted-foreground">Today's Absent</p><p className="text-2xl font-bold text-destructive">270</p></CardContent></Card>
+  const [stats, setStats] = useState<any>(null);
+  const [deptAttendance, setDeptAttendance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchAttendanceData = async () => {
+      setLoading(true);
+      try {
+        const [statsRes, deptsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/admin/attendance/stats`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_BASE}/api/admin/attendance/departments`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (statsRes.ok) setStats(await statsRes.json());
+        if (deptsRes.ok) setDeptAttendance(await deptsRes.json());
+      } catch (err) {
+        console.error("Failed to fetch attendance data", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAttendanceData();
+  }, [token]);
+
+  return (
+    <>
+      <Helmet>
+        <title>Attendance - EdulinkX Admin</title>
+      </Helmet>
+      <DashboardLayout
+        sidebarLinks={adminLinks}
+        userInfo={userInfo}
+        title="Attendance"
+        subtitle="Institution-wide attendance overview"
+      >
+        <div className="space-y-6">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card variant="stat" className="border-l-success">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">Overall Attendance</p>
+                {loading ? (
+                  <Skeleton className="h-8 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold text-success">
+                    {stats?.overallPercentage || 0}%
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <Card variant="stat" className="border-l-warning">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">Below 75%</p>
+                {loading ? (
+                  <Skeleton className="h-8 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold text-warning">
+                    {stats?.below75Count || 0}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <Card variant="stat" className="border-l-primary">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">Today's Present</p>
+                {loading ? (
+                  <Skeleton className="h-8 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold text-primary">
+                    {stats?.todayPresent || 0}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            <Card variant="stat" className="border-l-destructive">
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">Today's Absent</p>
+                {loading ? (
+                  <Skeleton className="h-8 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold text-destructive">
+                    {stats?.todayAbsent || 0}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Department Breakdown */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Department-wise Attendance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {loading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="flex justify-between">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-4 w-8" />
+                      </div>
+                      <Skeleton className="h-2 w-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                deptAttendance.map((d) => (
+                  <div key={d.name} className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">{d.name}</span>
+                      <span className="font-bold">{d.percentage}%</span>
+                    </div>
+                    <Progress
+                      value={d.percentage}
+                      className={
+                        d.percentage < 75
+                          ? "[&>div]:bg-destructive"
+                          : d.percentage < 85
+                          ? "[&>div]:bg-warning"
+                          : ""
+                      }
+                    />
+                  </div>
+                ))
+              )}
+              {!loading && deptAttendance.length === 0 && (
+                <p className="text-center py-8 text-muted-foreground">
+                  No attendance data available.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
-        <Card><CardHeader><CardTitle>Department-wise Attendance</CardTitle></CardHeader><CardContent className="space-y-4">{deptAttendance.map(d => (<div key={d.name} className="space-y-2"><div className="flex justify-between text-sm"><span>{d.name}</span><span className="font-medium">{d.percentage}%</span></div><Progress value={d.percentage} /></div>))}</CardContent></Card>
-      </div>
-    </DashboardLayout>
-  </>
-);
+      </DashboardLayout>
+    </>
+  );
+};
+
 export default AdminAttendance;

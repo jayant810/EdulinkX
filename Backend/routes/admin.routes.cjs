@@ -367,6 +367,64 @@ router.post("/courses/:id/add-participant", async (req, res) => {
   }
 });
 
+// --- ATTENDANCE ---
+
+router.get("/attendance/stats", async (req, res) => {
+  try {
+    // 1. Overall Attendance % (institution-wide)
+    const { rows: overall } = await pool.query(`
+      SELECT ROUND(COALESCE((SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / NULLIF(COUNT(*), 0)) * 100, 0)) as percentage 
+      FROM attendance_records`);
+
+    // 2. Count of students below 75%
+    const { rows: below75 } = await pool.query(`
+      SELECT COUNT(*) as count FROM (
+        SELECT student_user_id, 
+               (SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / COUNT(*)) * 100 as perc
+        FROM attendance_records
+        GROUP BY student_user_id
+        HAVING (SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / COUNT(*)) * 100 < 75
+      ) as low_attendance`);
+
+    // 3. Today's Present/Absent counts
+    const { rows: todayStats } = await pool.query(`
+      SELECT 
+        SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) as present,
+        SUM(CASE WHEN status='absent' THEN 1 ELSE 0 END) as absent
+      FROM attendance_records r
+      JOIN attendance_sessions s ON r.session_id = s.id
+      WHERE s.class_date = CURRENT_DATE`);
+
+    res.json({
+      overallPercentage: parseInt(overall[0]?.percentage || 0),
+      below75Count: parseInt(below75[0]?.count || 0),
+      todayPresent: parseInt(todayStats[0]?.present || 0),
+      todayAbsent: parseInt(todayStats[0]?.absent || 0)
+    });
+  } catch (err) {
+    console.error("[Admin Attendance Stats] Error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/attendance/departments", async (req, res) => {
+  try {
+    const { rows: depts } = await pool.query(`
+      SELECT d.name, 
+             ROUND(COALESCE((SUM(CASE WHEN r.status='present' THEN 1 ELSE 0 END)::DECIMAL / NULLIF(COUNT(r.id), 0)) * 100, 0)) as percentage
+      FROM departments d
+      LEFT JOIN student_profiles sp ON sp.department = d.name
+      LEFT JOIN attendance_records r ON r.student_user_id = sp.user_id
+      GROUP BY d.name
+      ORDER BY percentage DESC`);
+    
+    res.json(depts);
+  } catch (err) {
+    console.error("[Admin Attendance Departments] Error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // --- TEACHERS ---
 
 router.get("/teachers", async (req, res) => {
