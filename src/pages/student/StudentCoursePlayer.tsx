@@ -24,6 +24,8 @@ const StudentCoursePlayer = () => {
   const [lectures, setLectures] = useState<any[]>([]);
   const [activeLecture, setActiveLecture] = useState<any>(null);
   const [chat, setChat] = useState("");
+  const [aiHistory, setAiHistory] = useState<any[]>([]);
+  const [isAskingAI, setIsAskingAI] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   
@@ -53,9 +55,46 @@ const StudentCoursePlayer = () => {
       });
   };
 
+  const fetchAIHistory = () => {
+    if (!token || !courseId) return;
+    fetch(`${API_BASE}/api/ai/${courseId}/ai-queries`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setAiHistory(Array.isArray(data) ? data : []));
+  };
+
   useEffect(() => {
     fetchLectures();
+    fetchAIHistory();
   }, [courseId, token]);
+
+  const handleAskAI = async () => {
+    if (!chat.trim() || !courseId || isAskingAI) return;
+    
+    setIsAskingAI(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/${courseId}/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ question: chat })
+      });
+      
+      if (!res.ok) throw new Error("Failed to get answer");
+      
+      const data = await res.json();
+      setAiHistory(prev => [data, ...prev]);
+      setChat("");
+      toast.success("AI responded!");
+    } catch (err) {
+      toast.error("AI Assistant is busy. Try again later.");
+    } finally {
+      setIsAskingAI(false);
+    }
+  };
 
   useEffect(() => {
     setShowSummary(false);
@@ -330,20 +369,49 @@ const StudentCoursePlayer = () => {
 
             <Card className="border-none shadow-md">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Ask a Doubt</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-primary" />
+                  AI Doubt Assistant
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Textarea
-                  placeholder="Is there something you didn't understand? Ask the AI or Teacher..."
-                  value={chat}
-                  onChange={(e)=>setChat(e.target.value)}
-                  className="min-h-[100px] resize-none focus-visible:ring-primary"
-                />
-                <div className="flex justify-end">
-                  <Button className="px-8 shadow-lg hover:shadow-xl transition-all">
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Question
-                  </Button>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <Textarea
+                    placeholder="Ask anything about the course content..."
+                    value={chat}
+                    onChange={(e)=>setChat(e.target.value)}
+                    className="min-h-[100px] resize-none focus-visible:ring-primary"
+                  />
+                  <div className="flex justify-end">
+                    <Button 
+                      onClick={handleAskAI} 
+                      disabled={isAskingAI || !chat.trim()}
+                      className="px-8 shadow-lg hover:shadow-xl transition-all"
+                    >
+                      {isAskingAI ? (
+                        <Clock className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
+                      {isAskingAI ? "AI is Thinking..." : "Ask Gemini"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* AI Q&A History */}
+                <div className="space-y-4 mt-6">
+                  {aiHistory.map((item, idx) => (
+                    <div key={idx} className="space-y-2 p-4 rounded-xl bg-muted/30 border border-border/50">
+                      <div className="flex gap-2 items-start">
+                        <HelpCircle className="h-4 w-4 text-muted-foreground mt-1 shrink-0" />
+                        <p className="text-sm font-bold">{item.question}</p>
+                      </div>
+                      <div className="flex gap-2 items-start bg-primary/5 p-3 rounded-lg border border-primary/10">
+                        <Sparkles className="h-4 w-4 text-primary mt-1 shrink-0" />
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap">{item.answer}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>

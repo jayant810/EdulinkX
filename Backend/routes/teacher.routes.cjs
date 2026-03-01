@@ -136,10 +136,16 @@ async function generateSummary(title, subTitle) {
     try {
       console.log(`[AI] Attempting summary with model: ${modelName}`);
       const model = getModel(modelName);
-      const prompt = `Generate a concise, professional educational summary for a lecture titled "${title}" with description: "${subTitle || 'No description provided'}". Keep it under 100 words. Focus on core learning objectives.`;
+      const prompt = `Generate a detailed, comprehensive, and professional educational summary for a lecture titled "${title}" with description: "${subTitle || 'No description provided'}". 
+      The summary should be substantial (between 200-300 words) and include:
+      1. An overview of the core subject matter.
+      2. Key concepts and terminology discussed.
+      3. Primary learning objectives and takeaways.
+      4. Practical applications or real-world relevance of the topic.
+      Ensure the tone is academic yet accessible.`;
       const result = await model.generateContent(prompt);
       const summary = result.response.text();
-      console.log(`[AI] Successfully generated summary using ${modelName}`);
+      console.log(`[AI] Successfully generated detailed summary using ${modelName}`);
       return summary;
     } catch (err) {
       console.warn(`[AI] Model ${modelName} failed:`, err.message);
@@ -149,8 +155,11 @@ async function generateSummary(title, subTitle) {
   }
   
   // --- SMART FALLBACK (Free/Offline) ---
-  console.log("[AI] Using template-based fallback summary.");
-  return `This lecture on "${title}" covers key concepts and learning objectives. ${subTitle ? subTitle : 'It provides an in-depth exploration of the subject matter to help students build a strong foundational understanding.'}`;
+  console.log("[AI] Using detailed template-based fallback summary.");
+  return `This comprehensive lecture on "${title}" provides an in-depth exploration of its foundational principles and advanced applications. 
+  The session covers critical components including ${subTitle ? subTitle : 'the core theoretical framework and practical implementation strategies'}. 
+  Key learning objectives focus on building a robust understanding of the subject matter, enabling students to analyze complex problems and apply ${title} concepts in real-world scenarios. 
+  By the end of this lecture, students will have mastered the essential terminology and developed the analytical skills necessary for further study in this field.`;
 }
 
 // 1. Teacher Dashboard Summary

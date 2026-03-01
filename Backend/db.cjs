@@ -408,17 +408,19 @@ const initializeDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      CREATE TABLE IF NOT EXISTS teacher_profiles (
+      CREATE TABLE IF NOT EXISTS department_teachers (
+        department_id INT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+        teacher_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY (department_id, teacher_user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS course_ai_queries (
         id SERIAL PRIMARY KEY,
-        user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        employee_code VARCHAR(50) UNIQUE NOT NULL,
-        full_name VARCHAR(255),
-        email VARCHAR(255),
-        phone VARCHAR(20),
-        department VARCHAR(100),
-        designation VARCHAR(100),
-        qualification TEXT,
-        academic_status VARCHAR(50) DEFAULT 'Active'
+        course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        student_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        answer TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       INSERT INTO departments (name) VALUES ('Computer Science'), ('Electronics'), ('Mechanical'), ('Civil'), ('Business') ON CONFLICT DO NOTHING;
