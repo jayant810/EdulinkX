@@ -96,11 +96,14 @@ const AdminCourses = () => {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(courseForm)
       });
+      const data = await res.json();
       if (res.ok) {
         toast.success("Course created");
         setAddDialog(false);
         setCourseForm({ course_name: "", course_code: "", course_description: "", credits: 3, course_timing: "", department: "" });
         loadData();
+      } else {
+        toast.error(data.details || data.error || "Error creating course");
       }
     } catch (err) {
       toast.error("Error creating course");
