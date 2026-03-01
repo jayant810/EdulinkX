@@ -9,7 +9,7 @@ async function getDriveService() {
   const credentialsRaw = process.env.GOOGLE_CREDENTIALS;
   
   if (!credentialsRaw) {
-    console.error("[Google Drive] GOOGLE_CREDENTIALS environment variable not found.");
+    console.warn("[Google Drive] Skipping: GOOGLE_CREDENTIALS env var missing.");
     return null;
   }
 
@@ -24,9 +24,11 @@ async function getDriveService() {
       credentials,
       scopes: SCOPES,
     });
+    console.log("[Google Drive] Service initialized successfully.");
     return google.drive({ version: 'v3', auth });
   } catch (err) {
-    console.error("[Google Drive] Error parsing GOOGLE_CREDENTIALS:", err.message);
+    console.error("[Google Drive] Error parsing GOOGLE_CREDENTIALS.");
+    console.error(`[Google Drive] Detail: ${err.message}`);
     return null;
   }
 }
@@ -36,7 +38,6 @@ async function getDriveService() {
  */
 async function getOrCreateFolder(drive, folderName, parentId = null) {
   try {
-    // If no parentId is provided, and we have one in env, use it as the ultimate root
     const envRootId = process.env.GOOGLE_DRIVE_PARENT_ID;
     const actualParentId = parentId || envRootId;
 
@@ -67,9 +68,10 @@ async function getOrCreateFolder(drive, folderName, parentId = null) {
       fields: 'id',
     });
 
+    console.log(`[Google Drive] Created folder: ${folderName} (ID: ${folder.data.id})`);
     return folder.data.id;
   } catch (err) {
-    console.error(`[Google Drive] Error managing folder "${folderName}":`, err.message);
+    console.error(`[Google Drive] Folder Error ("${folderName}"):`, err.message);
     return null;
   }
 }
@@ -79,7 +81,10 @@ async function getOrCreateFolder(drive, folderName, parentId = null) {
  */
 async function uploadFile(filePath, fileName, folderId) {
   const drive = await getDriveService();
-  if (!drive) return null;
+  if (!drive) {
+    console.error("[Google Drive] Upload failed: Could not get Drive service.");
+    return null;
+  }
 
   try {
     const fileMetadata = {
@@ -105,13 +110,14 @@ async function uploadFile(filePath, fileName, folderId) {
       },
     });
 
+    console.log(`[Google Drive] SUCCESS: Uploaded ${fileName}. Stream URL generated.`);
     return {
       id: file.data.id,
       url: `https://lh3.googleusercontent.com/u/0/d/${file.data.id}`,
       viewLink: file.data.webViewLink,
     };
   } catch (err) {
-    console.error("[Google Drive] Upload failed:", err.message);
+    console.error(`[Google Drive] UPLOAD ERROR (${fileName}):`, err.message);
     return null;
   }
 }
