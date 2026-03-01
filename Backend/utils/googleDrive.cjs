@@ -14,7 +14,6 @@ async function getDriveService() {
   }
 
   try {
-    // Robust parsing: trim and handle potential extra wrapping quotes from environment/shell
     let cleaned = credentialsRaw.trim();
     if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
       cleaned = cleaned.substring(1, cleaned.length - 1);
@@ -27,20 +26,26 @@ async function getDriveService() {
     });
     return google.drive({ version: 'v3', auth });
   } catch (err) {
-    console.error("[Google Drive] Error parsing GOOGLE_CREDENTIALS.");
-    console.error(`[Google Drive] Technical Detail: ${err.message}`);
-    console.log("[Google Drive] Tip: Ensure you pasted the entire JSON content starting with { and ending with } into the Render Environment Variable.");
+    console.error("[Google Drive] Error parsing GOOGLE_CREDENTIALS:", err.message);
     return null;
   }
 }
 
 /**
- * Finds or creates a folder in Google Drive.
+ * Finds or creates a folder.
  */
 async function getOrCreateFolder(drive, folderName, parentId = null) {
   try {
+    // If no parentId is provided, and we have one in env, use it as the ultimate root
+    const envRootId = process.env.GOOGLE_DRIVE_PARENT_ID;
+    const actualParentId = parentId || envRootId;
+
     let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-    if (parentId) query += ` and '${parentId}' in parents`;
+    if (actualParentId) {
+      query += ` and '${actualParentId}' in parents`;
+    } else {
+      query += ` and 'root' in parents`;
+    }
 
     const response = await drive.files.list({
       q: query,
@@ -54,7 +59,7 @@ async function getOrCreateFolder(drive, folderName, parentId = null) {
     const fileMetadata = {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: parentId ? [parentId] : [],
+      parents: actualParentId ? [actualParentId] : [],
     };
 
     const folder = await drive.files.create({
@@ -70,7 +75,7 @@ async function getOrCreateFolder(drive, folderName, parentId = null) {
 }
 
 /**
- * Uploads a file to Google Drive and returns a direct streamable link.
+ * Uploads a file.
  */
 async function uploadFile(filePath, fileName, folderId) {
   const drive = await getDriveService();
@@ -92,7 +97,6 @@ async function uploadFile(filePath, fileName, folderId) {
       fields: 'id, webViewLink, webContentLink',
     });
 
-    // Make file publicly readable so the student player can stream it
     await drive.permissions.create({
       fileId: file.data.id,
       resource: {
@@ -103,7 +107,6 @@ async function uploadFile(filePath, fileName, folderId) {
 
     return {
       id: file.data.id,
-      // Direct stream link format for Google Drive
       url: `https://lh3.googleusercontent.com/u/0/d/${file.data.id}`,
       viewLink: file.data.webViewLink,
     };
