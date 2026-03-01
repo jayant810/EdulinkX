@@ -61,39 +61,61 @@ const initializeDatabase = async () => {
   let client;
   try {
     client = await pool.connect();
-    await client.query('BEGIN');
 
-    // ... (rest of the schema creation logic stays same)
-    // 1. Types
+    // --- ENUM CREATION (MUST BE OUTSIDE TRANSACTION FOR ALTER TYPE) ---
+    
+    // User Role
     await client.query(`
       DO $$ BEGIN
         CREATE TYPE user_role AS ENUM ('student', 'teacher', 'admin');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-      
+    `);
+
+    // Attendance Status
+    await client.query(`
       DO $$ BEGIN
         CREATE TYPE attendance_status AS ENUM ('present', 'absent', 'late', 'not_marked');
       EXCEPTION WHEN duplicate_object THEN 
-        ALTER TYPE attendance_status ADD VALUE IF NOT EXISTS 'not_marked';
+        -- Check if 'not_marked' exists in the enum
+        IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'not_marked' 
+                       AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'attendance_status')) THEN
+          ALTER TYPE attendance_status ADD VALUE 'not_marked';
+        END IF;
       END $$;
+    `);
 
+    // Assignment Type
+    await client.query(`
       DO $$ BEGIN
         CREATE TYPE assignment_type AS ENUM ('pdf', 'short', 'mcq');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
 
+    // Submission Status
+    await client.query(`
       DO $$ BEGIN
         CREATE TYPE submission_status AS ENUM ('submitted', 'reviewed', 'graded');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
 
+    // Exam Status
+    await client.query(`
       DO $$ BEGIN
         CREATE TYPE exam_status AS ENUM ('draft', 'published', 'completed');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
 
+    // Video Type
+    await client.query(`
       DO $$ BEGIN
         CREATE TYPE video_type AS ENUM ('url', 'local');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     `);
 
-    // 2. Tables
+    // --- MAIN TABLE INITIALIZATION (IN TRANSACTION) ---
+    
+    await client.query('BEGIN');
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -160,7 +182,7 @@ const initializeDatabase = async () => {
         course_description TEXT,
         credits INT DEFAULT 0,
         course_timing VARCHAR(255),
-        department VARCHAR(100) -- New column
+        department VARCHAR(100)
       );
 
       ALTER TABLE courses ADD COLUMN IF NOT EXISTS department VARCHAR(100);
@@ -388,13 +410,12 @@ const initializeDatabase = async () => {
         full_name VARCHAR(255),
         email VARCHAR(255),
         phone VARCHAR(20),
-        department VARCHAR(100), -- Kept for compatibility
+        department VARCHAR(100),
         designation VARCHAR(100),
         qualification TEXT,
         academic_status VARCHAR(50) DEFAULT 'Active'
       );
 
-      -- Default departments
       INSERT INTO departments (name) VALUES ('Computer Science'), ('Electronics'), ('Mechanical'), ('Civil'), ('Business') ON CONFLICT DO NOTHING;
     `);
 
@@ -408,9 +429,11 @@ const initializeDatabase = async () => {
     console.log("Database initialization complete.");
     global.dbInitialized = true;
   } catch (err) {
-    if (client) await client.query('ROLLBACK');
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch(e) {}
+    }
     console.error("Database initialization failed:", err.message);
-    throw err; // Propagate to stop server startup
+    throw err; 
   } finally {
     if (client) client.release();
   }
