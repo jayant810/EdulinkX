@@ -1,3 +1,4 @@
+// Force trigger rebuild for student routes - v1.0.1
 const express = require("express");
 const router = express.Router();
 const { pool } = require("../db.cjs");
