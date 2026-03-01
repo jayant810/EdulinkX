@@ -71,8 +71,10 @@ const initializeDatabase = async () => {
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
       
       DO $$ BEGIN
-        CREATE TYPE attendance_status AS ENUM ('present', 'absent', 'late');
-      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+        CREATE TYPE attendance_status AS ENUM ('present', 'absent', 'late', 'not_marked');
+      EXCEPTION WHEN duplicate_object THEN 
+        ALTER TYPE attendance_status ADD VALUE IF NOT EXISTS 'not_marked';
+      END $$;
 
       DO $$ BEGIN
         CREATE TYPE assignment_type AS ENUM ('pdf', 'short', 'mcq');
@@ -220,8 +222,10 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         session_id INT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
         student_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        status attendance_status DEFAULT 'present'
+        status attendance_status DEFAULT 'not_marked'
       );
+
+      ALTER TABLE attendance_records ALTER COLUMN status SET DEFAULT 'not_marked';
 
       CREATE TABLE IF NOT EXISTS assignments (
         id SERIAL PRIMARY KEY,

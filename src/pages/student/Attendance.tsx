@@ -207,15 +207,18 @@ const StudentAttendance = () => {
                 <div className="grid grid-cols-7 gap-1">
                   {calendarDays.map((d, i) => (
                     <div key={i}
-                      className={`aspect-square flex items-center justify-center rounded-md text-xs ${
+                      className={`aspect-square flex items-center justify-center rounded-md text-xs transition-all ${
                         d.day === 0 
                           ? "invisible" 
                           : d.status === "present"
-                          ? "bg-success/20 text-success font-bold"
+                          ? "bg-success text-success-foreground font-bold shadow-sm"
                           : d.status === "absent"
-                          ? "bg-destructive/20 text-destructive font-bold"
-                          : "bg-muted text-muted-foreground"
+                          ? "bg-destructive text-destructive-foreground font-bold shadow-sm"
+                          : d.status === "not_marked"
+                          ? "bg-muted border-2 border-dashed border-muted-foreground/30 text-muted-foreground animate-pulse"
+                          : "bg-muted/30 text-muted-foreground/50"
                       }`}
+                      title={d.title || (d.status === "not_marked" ? "Attendance not marked yet" : "")}
                     >
                       {d.day !== 0 && d.day}
                     </div>

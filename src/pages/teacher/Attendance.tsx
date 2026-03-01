@@ -30,7 +30,7 @@ const TeacherAttendance = () => {
   const [selectedCourse, setSelectedCourse] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState([]);
-  const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [attendance, setAttendance] = useState<Record<string, string>>({});
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -55,11 +55,11 @@ const TeacherAttendance = () => {
       .then(data => {
         const studentList = data.students || [];
         setStudents(studentList);
-        // If existing records found, use them; otherwise default to all present
+        // If existing records found, use them; otherwise default to all not_marked
         if (data.existingRecords && Object.keys(data.existingRecords).length > 0) {
           setAttendance(data.existingRecords);
         } else {
-          setAttendance(Object.fromEntries(studentList.map((s: any) => [s.id, true])));
+          setAttendance(Object.fromEntries(studentList.map((s: any) => [s.id, "not_marked"])));
         }
       })
       .catch(err => {
@@ -90,8 +90,8 @@ const TeacherAttendance = () => {
     loadStudents();
   }, [selectedCourse, selectedDate, token]);
 
-  const handleToggle = (id: string) => {
-    setAttendance(prev => ({ ...prev, [id]: !prev[id] }));
+  const handleStatusChange = (id: string, status: string) => {
+    setAttendance(prev => ({ ...prev, [id]: status }));
   };
 
   const handleBulkAttendance = async (data: any[]) => {
@@ -154,8 +154,9 @@ const TeacherAttendance = () => {
     }
   };
 
-  const presentCount = Object.values(attendance).filter(Boolean).length;
-  const absentCount = Object.values(attendance).filter(v => !v).length;
+  const presentCount = Object.values(attendance).filter(v => v === "present").length;
+  const absentCount = Object.values(attendance).filter(v => v === "absent").length;
+  const notMarkedCount = Object.values(attendance).filter(v => v === "not_marked").length;
 
   return (
     <>
@@ -216,7 +217,7 @@ const TeacherAttendance = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex gap-4 mb-6">
+                  <div className="flex flex-wrap gap-4 mb-6">
                     <Badge variant="success" className="px-4 py-2">
                       <CheckCircle2 className="h-4 w-4 mr-1" />
                       Present: {presentCount}
@@ -225,36 +226,63 @@ const TeacherAttendance = () => {
                       <XCircle className="h-4 w-4 mr-1" />
                       Absent: {absentCount}
                     </Badge>
+                    <Badge variant="secondary" className="px-4 py-2">
+                      <XCircle className="h-4 w-4 mr-1 opacity-50" />
+                      Not Marked: {notMarkedCount}
+                    </Badge>
                   </div>
 
                   <div className="grid gap-2">
-                    {students.map((student: any) => (
-                      <div
-                        key={student.id}
-                        className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
-                          attendance[student.id] ? "bg-success/10" : "bg-destructive/10"
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
-                            {student.roll_number || "—"}
+                    {students.map((student: any) => {
+                      const status = attendance[student.id] || "not_marked";
+                      return (
+                        <div
+                          key={student.id}
+                          className={`flex items-center justify-between p-4 rounded-lg transition-colors border ${
+                            status === "present" ? "bg-success/5 border-success/20" : 
+                            status === "absent" ? "bg-destructive/5 border-destructive/20" : 
+                            "bg-muted/30 border-transparent"
+                          }`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
+                              {student.roll_number || "—"}
+                            </div>
+                            <div>
+                              <p className="font-medium">{student.name}</p>
+                              <p className="text-xs text-muted-foreground">{student.student_id}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium">{student.name}</p>
-                            <p className="text-xs text-muted-foreground">{student.student_id}</p>
+                          
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              size="sm" 
+                              variant={status === "present" ? "success" : "outline"}
+                              className="h-8"
+                              onClick={() => handleStatusChange(student.id, "present")}
+                            >
+                              Present
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant={status === "absent" ? "destructive" : "outline"}
+                              className="h-8"
+                              onClick={() => handleStatusChange(student.id, "absent")}
+                            >
+                              Absent
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant={status === "not_marked" ? "secondary" : "outline"}
+                              className="h-8"
+                              onClick={() => handleStatusChange(student.id, "not_marked")}
+                            >
+                              Reset
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <Badge variant={attendance[student.id] ? "success" : "destructive"}>
-                            {attendance[student.id] ? "Present" : "Absent"}
-                          </Badge>
-                          <Checkbox
-                            checked={attendance[student.id] || false}
-                            onCheckedChange={() => handleToggle(student.id)}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {students.length === 0 && (
                       <p className="text-center text-muted-foreground py-8">No students found for this course.</p>
                     )}

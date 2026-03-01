@@ -8,9 +8,9 @@ const { pool } = require("../db.cjs");
 router.get("/dashboard/summary", async (req, res) => {
   const studentId = req.user.id;
   try {
-    // Attendance % - Fixed division by zero for PostgreSQL
+    // Attendance % - Only count marked records
     const [[attendance]] = await pool.execute(`
-      SELECT ROUND(COALESCE((SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / NULLIF(COUNT(*), 0)) * 100, 0)) as percentage 
+      SELECT ROUND(COALESCE((SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / NULLIF(COUNT(CASE WHEN status != 'not_marked' THEN 1 END), 0)) * 100, 0)) as percentage 
       FROM attendance_records WHERE student_user_id = ?`, [studentId]);
 
     // CGPA
@@ -97,7 +97,7 @@ router.get("/attendance/subjects", async (req, res) => {
   try {
     const [rows] = await pool.execute(`
       SELECT c.id, c.course_name as name, c.course_code as code,
-             COUNT(s.id) as total_classes,
+             COUNT(CASE WHEN r.status != 'not_marked' THEN s.id END) as total_classes,
              SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) as present_classes
       FROM courses c
       JOIN course_students cs ON cs.course_id = c.id
@@ -148,7 +148,47 @@ router.get("/attendance/calendar", async (req, res) => {
 
 // 6.5 Attendance Summary
 router.get("/attendance/summary", async (req, res) => {
-... (summary logic) ...
+  const studentId = req.user.id;
+  try {
+    // Overall Stats - Only count records that are marked
+    const [[stats]] = await pool.execute(`
+      SELECT 
+        COUNT(CASE WHEN status != 'not_marked' THEN 1 END) as total_classes,
+        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count,
+        SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_count
+      FROM attendance_records 
+      WHERE student_user_id = ?`, [studentId]);
+
+    // Breakdown by subject
+    const [breakdown] = await pool.execute(`
+      SELECT c.course_name as subject,
+             COUNT(CASE WHEN r.status != 'not_marked' THEN r.id END) as total,
+             SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) as present
+      FROM courses c
+      JOIN course_students cs ON cs.course_id = c.id
+      LEFT JOIN attendance_sessions s ON s.course_id = c.id
+      LEFT JOIN attendance_records r ON r.session_id = s.id AND r.student_user_id = ?
+      WHERE cs.student_user_id = ?
+      GROUP BY c.id, c.course_name`, [studentId, studentId]);
+
+    const totalClasses = parseInt(stats?.total_classes || 0);
+    const presentCount = parseInt(stats?.present_count || 0);
+    const absentCount = parseInt(stats?.absent_count || 0);
+
+    res.json({
+      overall: totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0,
+      present: presentCount,
+      absent: absentCount,
+      total: totalClasses,
+      breakdown: breakdown.map(b => ({
+        subject: b.subject,
+        percentage: parseInt(b.total) > 0 ? Math.round((parseInt(b.present) / parseInt(b.total)) * 100) : 0
+      }))
+    });
+  } catch (err) {
+    console.error("[Attendance Summary] Error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // 6.6 Holidays
@@ -287,4 +327,3 @@ router.get("/fees", async (req, res) => {
 });
 
 module.exports = router;
-
