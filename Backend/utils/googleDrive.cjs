@@ -6,22 +6,30 @@ const path = require('path');
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
 async function getDriveService() {
-  const credentialsJson = process.env.GOOGLE_CREDENTIALS;
+  const credentialsRaw = process.env.GOOGLE_CREDENTIALS;
   
-  if (!credentialsJson) {
+  if (!credentialsRaw) {
     console.error("[Google Drive] GOOGLE_CREDENTIALS environment variable not found.");
     return null;
   }
 
   try {
-    const credentials = JSON.parse(credentialsJson);
+    // Robust parsing: trim and handle potential extra wrapping quotes from environment/shell
+    let cleaned = credentialsRaw.trim();
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      cleaned = cleaned.substring(1, cleaned.length - 1);
+    }
+    
+    const credentials = JSON.parse(cleaned);
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: SCOPES,
     });
     return google.drive({ version: 'v3', auth });
   } catch (err) {
-    console.error("[Google Drive] Error parsing GOOGLE_CREDENTIALS:", err.message);
+    console.error("[Google Drive] Error parsing GOOGLE_CREDENTIALS.");
+    console.error(`[Google Drive] Technical Detail: ${err.message}`);
+    console.log("[Google Drive] Tip: Ensure you pasted the entire JSON content starting with { and ending with } into the Render Environment Variable.");
     return null;
   }
 }
@@ -62,7 +70,7 @@ async function getOrCreateFolder(drive, folderName, parentId = null) {
 }
 
 /**
- * Uploads a file to Google Drive.
+ * Uploads a file to Google Drive and returns a direct streamable link.
  */
 async function uploadFile(filePath, fileName, folderId) {
   const drive = await getDriveService();
@@ -84,7 +92,7 @@ async function uploadFile(filePath, fileName, folderId) {
       fields: 'id, webViewLink, webContentLink',
     });
 
-    // Make file publicly readable for streaming
+    // Make file publicly readable so the student player can stream it
     await drive.permissions.create({
       fileId: file.data.id,
       resource: {
@@ -95,6 +103,7 @@ async function uploadFile(filePath, fileName, folderId) {
 
     return {
       id: file.data.id,
+      // Direct stream link format for Google Drive
       url: `https://lh3.googleusercontent.com/u/0/d/${file.data.id}`,
       viewLink: file.data.webViewLink,
     };

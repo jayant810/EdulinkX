@@ -18,7 +18,7 @@ function getModel(modelName) {
 // 1. Bulk Courses
 router.post("/bulk-courses", async (req, res) => {
   const teacherId = req.user.id;
-  const { courses } = req.body; // Array of { course_name, course_code, course_description, credits, course_timing }
+  const { courses } = req.body; // Array of { course_name, course_code, course_description, credits, course_timing, department }
 
   if (!Array.isArray(courses)) return res.status(400).json({ error: "Invalid data format" });
 
@@ -27,8 +27,8 @@ router.post("/bulk-courses", async (req, res) => {
     await client.query('BEGIN');
     for (const c of courses) {
       const { rows } = await client.query(
-        "INSERT INTO courses (course_name, course_code, course_description, credits, course_timing) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (course_code) DO UPDATE SET course_name = EXCLUDED.course_name RETURNING id",
-        [c.course_name, c.course_code, c.course_description || "", c.credits || 0, c.course_timing || ""]
+        "INSERT INTO courses (course_name, course_code, course_description, credits, course_timing, department) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (course_code) DO UPDATE SET course_name = EXCLUDED.course_name, department = EXCLUDED.department RETURNING id",
+        [c.course_name, c.course_code, c.course_description || "", c.credits || 0, c.course_timing || "", c.department || "General"]
       );
       const courseId = rows[0].id;
       // Link to teacher
