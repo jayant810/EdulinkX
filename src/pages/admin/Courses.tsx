@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Eye, Edit, Trash2, UserPlus, FileSpreadsheet, AlertCircle, CheckCircle2, Search } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, UserPlus, FileSpreadsheet, AlertCircle, CheckCircle2, Search, Users } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -198,6 +198,18 @@ const AdminCourses = () => {
     c.course_code.toLowerCase().includes(search.toLowerCase())
   ) : [];
 
+  // Group courses by department
+  const groupedCourses = departments.reduce((acc: any, dept: any) => {
+    acc[dept.name] = filteredCourses.filter(c => c.department === dept.name);
+    return acc;
+  }, {});
+
+  // Add courses that don't match any department (if any)
+  const unassignedCourses = filteredCourses.filter(c => !departments.some(d => d.name === c.department));
+  if (unassignedCourses.length > 0) {
+    groupedCourses["Unassigned / Other"] = unassignedCourses;
+  }
+
   return (
     <>
       <Helmet><title>Courses - EdulinkX Admin</title></Helmet>
@@ -212,50 +224,70 @@ const AdminCourses = () => {
           </div>
         }
       >
-        <div className="space-y-6">
+        <div className="space-y-8">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Search by name or code..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-muted/50 border-b">
-                    <tr className="text-left text-xs font-bold uppercase text-muted-foreground">
-                      <th className="p-4">Course</th>
-                      <th className="p-4">Dept</th>
-                      <th className="p-4">Credits</th>
-                      <th className="p-4 text-center">Faculty</th>
-                      <th className="p-4 text-center">Students</th>
-                      <th className="p-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {filteredCourses.map(c => (
-                      <tr key={c.id} className="text-sm">
-                        <td className="p-4">
-                          <p className="font-medium">{c.course_name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{c.course_code}</p>
-                        </td>
-                        <td className="p-4"><Badge variant="outline">{c.department}</Badge></td>
-                        <td className="p-4">{c.credits}</td>
-                        <td className="p-4 text-center font-bold">{c.teacher_count}</td>
-                        <td className="p-4 text-center font-bold">{c.student_count}</td>
-                        <td className="p-4 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedCourse(c); loadParticipants(c.id); setManageDialog(true); }}><Users className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedCourse(c); setEditDialog(true); }}><Edit className="h-4 w-4" /></Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {Object.entries(groupedCourses).map(([deptName, deptCourses]: [string, any]) => (
+            deptCourses.length > 0 && (
+              <div key={deptName} className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold tracking-tight">{deptName}</h3>
+                  <Badge variant="secondary" className="rounded-full">{deptCourses.length} Courses</Badge>
+                </div>
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-muted/50 border-b">
+                          <tr className="text-left text-xs font-bold uppercase text-muted-foreground">
+                            <th className="p-4">Course</th>
+                            <th className="p-4">Credits</th>
+                            <th className="p-4 text-center">Faculty</th>
+                            <th className="p-4 text-center">Students</th>
+                            <th className="p-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {deptCourses.map((c: any) => (
+                            <tr key={c.id} className="text-sm hover:bg-muted/30 transition-colors">
+                              <td className="p-4">
+                                <p className="font-medium">{c.course_name}</p>
+                                <p className="text-xs text-muted-foreground font-mono">{c.course_code}</p>
+                              </td>
+                              <td className="p-4 font-mono">{c.credits}</td>
+                              <td className="p-4 text-center font-bold text-primary">{c.teacher_count}</td>
+                              <td className="p-4 text-center font-bold text-info">{c.student_count}</td>
+                              <td className="p-4 text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedCourse(c); loadParticipants(c.id); setManageDialog(true); }}>
+                                    <Users className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedCourse(c); setEditDialog(true); }}>
+                                    <Edit className="h-4 w-4 text-warning" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
+            )
+          ))}
+
+          {filteredCourses.length === 0 && !loading && (
+            <div className="text-center py-20 bg-muted/20 rounded-xl border-2 border-dashed">
+              <BookOpen className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-medium">No courses found</h3>
+              <p className="text-muted-foreground">Try adjusting your search or add a new course.</p>
+            </div>
+          )}
         </div>
 
         {/* Add Course Dialog */}
