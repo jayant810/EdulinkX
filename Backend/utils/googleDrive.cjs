@@ -9,30 +9,35 @@ async function getDriveService() {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
-  if (clientId && clientSecret && refreshToken) {
-    // --- METHOD 1: OAuth2 (For Personal 2TB Accounts) ---
+  // Debug which vars are found
+  const hasClientId = !!clientId;
+  const hasSecret = !!clientSecret;
+  const hasToken = !!refreshToken;
+
+  if (hasClientId && hasSecret && hasToken) {
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'https://developers.google.com/oauthplayground');
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     console.log("[Google Drive] Initialized using OAuth2 (Personal Account).");
     return google.drive({ version: 'v3', auth: oauth2Client });
-  } 
+  } else {
+    console.log(`[Google Drive] OAuth2 skipped. Missing: ${!hasClientId ? 'GOOGLE_CLIENT_ID ' : ''}${!hasSecret ? 'GOOGLE_CLIENT_SECRET ' : ''}${!hasToken ? 'GOOGLE_REFRESH_TOKEN' : ''}`);
+  }
   
   const credentialsRaw = process.env.GOOGLE_CREDENTIALS;
   if (credentialsRaw) {
-    // --- METHOD 2: Service Account (Fallback) ---
     try {
       let cleaned = credentialsRaw.trim();
       if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.substring(1, cleaned.length - 1);
       const credentials = JSON.parse(cleaned);
       const auth = new google.auth.GoogleAuth({ credentials, scopes: SCOPES });
-      console.log("[Google Drive] Initialized using Service Account.");
+      console.log("[Google Drive] Initialized using Service Account (Fallback).");
       return google.drive({ version: 'v3', auth });
     } catch (err) {
       console.error("[Google Drive] Service Account Auth Error:", err.message);
     }
   }
 
-  console.warn("[Google Drive] Auth failed: Missing OAuth2 tokens or Service Account credentials.");
+  console.warn("[Google Drive] Auth failed: No valid credentials found.");
   return null;
 }
 
