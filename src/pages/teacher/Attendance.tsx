@@ -29,10 +29,44 @@ const TeacherAttendance = () => {
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // New States
+  const [isRangeMode, setIsRangeMode] = useState(false);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [holidays, setHolidays] = useState<any[]>([]);
+
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState<Record<string, string>>({});
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const fetchHolidays = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/holidays`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setHolidays(await res.json());
+    } catch (err) {
+      console.error("Error fetching holidays:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (token) fetchHolidays();
+  }, [token]);
+
+  // Warning for holiday selection
+  useEffect(() => {
+    if (!isRangeMode && selectedDate && holidays.length > 0) {
+      const dateObj = new Date(selectedDate);
+      const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+      const holiday = holidays.find(h => h.holiday_date.split('T')[0] === selectedDate);
+      
+      if (holiday || isWeekend) {
+        toast.warning(`Note: ${selectedDate} is a ${holiday ? holiday.title : "Weekend"}. Are you sure you want to mark attendance?`);
+      }
+    }
+  }, [selectedDate, holidays, isRangeMode]);
 
   const loadHistory = () => {
     fetch(`${API_BASE}/api/teacher/attendance/history`, {
@@ -47,7 +81,6 @@ const TeacherAttendance = () => {
       setStudents([]);
       return;
     }
-    // Load students and existing records for selected course and date
     fetch(`${API_BASE}/api/teacher/courses/${selectedCourse}/students?date=${selectedDate}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -55,7 +88,6 @@ const TeacherAttendance = () => {
       .then(data => {
         const studentList = data.students || [];
         setStudents(studentList);
-        // If existing records found, use them; otherwise default to all not_marked
         if (data.existingRecords && Object.keys(data.existingRecords).length > 0) {
           setAttendance(data.existingRecords);
         } else {
@@ -70,7 +102,6 @@ const TeacherAttendance = () => {
 
   useEffect(() => {
     if (!token) return;
-    // Load courses
     fetch(`${API_BASE}/api/teacher/courses`, {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -82,7 +113,6 @@ const TeacherAttendance = () => {
           setSelectedCourse(firstCourseId);
         }
       });
-
     loadHistory();
   }, [token]);
 
@@ -99,7 +129,6 @@ const TeacherAttendance = () => {
       toast.error("Please select a course and date first");
       return;
     }
-
     try {
       const res = await fetch(`${API_BASE}/api/teacher/attendance/bulk`, {
         method: "POST",
@@ -113,9 +142,7 @@ const TeacherAttendance = () => {
           attendance: data
         })
       });
-
       if (!res.ok) throw new Error("Bulk attendance upload failed");
-
       toast.success(`Successfully uploaded attendance for ${data.length} students`);
       loadStudents();
       loadHistory();
@@ -127,28 +154,42 @@ const TeacherAttendance = () => {
 
   const handleSubmitAttendance = async () => {
     if (!selectedCourse || !selectedDate) return;
+    if (isRangeMode && !endDate) {
+      toast.error("Please select an end date for the range");
+      return;
+    }
+
     setLoading(true);
     try {
+      const payload: any = {
+        courseId: selectedCourse,
+        records: attendance
+      };
+
+      if (isRangeMode) {
+        payload.startDate = selectedDate;
+        payload.endDate = endDate;
+      } else {
+        payload.date = selectedDate;
+      }
+
       const res = await fetch(`${API_BASE}/api/teacher/attendance`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          courseId: selectedCourse,
-          date: selectedDate,
-          records: attendance
-        })
+        body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error("Failed to submit");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit");
 
-      toast.success("Attendance updated successfully");
+      toast.success(data.message || "Attendance updated successfully");
       loadHistory();
         
-    } catch (err) {
-      toast.error("Error submitting attendance");
+    } catch (err: any) {
+      toast.error(err.message || "Error submitting attendance");
     } finally {
       setLoading(false);
     }
@@ -204,7 +245,9 @@ const TeacherAttendance = () => {
                         </Select>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-muted-foreground">Select Date</label>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          {isRangeMode ? "Start Date" : "Select Date"}
+                        </label>
                         <Input 
                           type="date" 
                           className="w-[160px]" 
@@ -212,6 +255,23 @@ const TeacherAttendance = () => {
                           onChange={(e) => setSelectedDate(e.target.value)}
                           max={new Date().toISOString().split('T')[0]}
                         />
+                      </div>
+                      {isRangeMode && (
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-muted-foreground">End Date</label>
+                          <Input 
+                            type="date" 
+                            className="w-[160px]" 
+                            value={endDate} 
+                            onChange={(e) => setEndDate(e.target.value)}
+                            min={selectedDate}
+                            max={new Date().toISOString().split('T')[0]}
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 pt-5">
+                        <Checkbox id="range-mode" checked={isRangeMode} onCheckedChange={(val) => setIsRangeMode(!!val)} />
+                        <label htmlFor="range-mode" className="text-sm font-medium leading-none cursor-pointer">Range Mode</label>
                       </div>
                     </div>
                   </div>

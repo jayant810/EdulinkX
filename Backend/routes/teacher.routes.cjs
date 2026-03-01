@@ -407,7 +407,17 @@ router.post("/exams", async (req, res) => {
   }
 });
 
-// 7. Attendance
+// --- ATTENDANCE ---
+
+router.get("/holidays", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT holiday_date, title, is_weekend FROM holidays ORDER BY holiday_date ASC");
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/courses/:courseId/students", async (req, res) => {
   const { courseId } = req.params;
   const { date } = req.query;
@@ -440,27 +450,77 @@ router.get("/courses/:courseId/students", async (req, res) => {
 
 router.post("/attendance", async (req, res) => {
   const teacherId = req.user.id;
-  const { courseId, date, records } = req.body;
+  const { courseId, date, startDate, endDate, records } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: sessionRows } = await client.query("SELECT id FROM attendance_sessions WHERE course_id = $1 AND class_date = $2", [courseId, date]);
-    let sessionId;
-    if (sessionRows.length > 0) {
-      sessionId = sessionRows[0].id;
+
+    // 1. Determine dates to process
+    let datesToProcess = [];
+    if (startDate && endDate) {
+      // Date range mode
+      let current = new Date(startDate);
+      const last = new Date(endDate);
+      
+      // Fetch holidays in range
+      const { rows: holidays } = await client.query(
+        "SELECT holiday_date FROM holidays WHERE holiday_date BETWEEN $1 AND $2",
+        [startDate, endDate]
+      );
+      const holidaySet = new Set(holidays.map(h => new Date(h.holiday_date).toISOString().split('T')[0]));
+
+      while (current <= last) {
+        const dateStr = current.toISOString().split('T')[0];
+        const dayOfWeek = current.getDay(); // 0=Sun, 6=Sat
+        
+        // Skip weekends and explicit holidays
+        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidaySet.has(dateStr)) {
+          datesToProcess.push(dateStr);
+        }
+        current.setDate(current.getDate() + 1);
+      }
     } else {
-      const { rows: insertRows } = await client.query("INSERT INTO attendance_sessions (course_id, teacher_user_id, class_date) VALUES ($1, $2, $3) RETURNING id", [courseId, teacherId, date]);
-      sessionId = insertRows[0].id;
+      // Single date mode
+      datesToProcess = [date];
     }
-    await client.query("DELETE FROM attendance_records WHERE session_id = $1", [sessionId]);
-    for (const [studentId, status] of Object.entries(records)) {
-      await client.query("INSERT INTO attendance_records (session_id, student_user_id, status) VALUES ($1, $2, $3)", [sessionId, studentId, status ? 'present' : 'absent']);
+
+    for (const d of datesToProcess) {
+      const { rows: sessionRows } = await client.query(
+        "SELECT id FROM attendance_sessions WHERE course_id = $1 AND class_date = $2", 
+        [courseId, d]
+      );
+      
+      let sessionId;
+      if (sessionRows.length > 0) {
+        sessionId = sessionRows[0].id;
+      } else {
+        const { rows: insertRows } = await client.query(
+          "INSERT INTO attendance_sessions (course_id, teacher_user_id, class_date) VALUES ($1, $2, $3) RETURNING id", 
+          [courseId, teacherId, d]
+        );
+        sessionId = insertRows[0].id;
+      }
+
+      await client.query("DELETE FROM attendance_records WHERE session_id = $1", [sessionId]);
+      for (const [studentId, status] of Object.entries(records)) {
+        // status is now string: 'present', 'absent', 'not_marked'
+        await client.query(
+          "INSERT INTO attendance_records (session_id, student_user_id, status) VALUES ($1, $2, $3)", 
+          [sessionId, studentId, status]
+        );
+      }
     }
+
     await client.query('COMMIT');
-    res.status(201).json({ message: "Attendance updated" });
+    res.status(201).json({ 
+      success: true, 
+      message: `Attendance updated for ${datesToProcess.length} days`,
+      daysProcessed: datesToProcess.length
+    });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: "Server error" });
+    console.error("[Attendance POST] Error:", err);
+    res.status(500).json({ error: "Server error", details: err.message });
   } finally {
     client.release();
   }
