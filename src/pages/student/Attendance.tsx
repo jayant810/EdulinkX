@@ -32,7 +32,13 @@ const StudentAttendance = () => {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setSummary(data));
+      .then(data => setSummary({
+        overallAttendance: data.overall || 0,
+        presentClasses: data.present || 0,
+        totalClasses: data.total || 0,
+        missedClasses: data.absent || 0,
+        lowAttendanceCount: data.breakdown?.filter((b: any) => b.percentage < 75).length || 0
+      }));
 
     fetch(`${API_BASE}/api/student/attendance/subjects`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -51,13 +57,21 @@ const StudentAttendance = () => {
       .then(res => res.json())
       .then(data => {
         const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+        
         const attendanceMap: any = {};
         data.forEach((d: any) => {
-          const day = new Date(d.date).getDate();
+          const dateObj = new Date(d.class_date);
+          const day = dateObj.getDate();
           attendanceMap[day] = d.status;
         });
 
         const calendarArray = [];
+        // Add empty cells for days of the week before the 1st
+        for (let i = 0; i < firstDayOfMonth; i++) {
+          calendarArray.push({ day: 0, status: "none" });
+        }
+
         for (let i = 1; i <= daysInMonth; i++) {
           calendarArray.push({
             day: i,
@@ -171,14 +185,16 @@ const StudentAttendance = () => {
                   {calendarDays.map((d, i) => (
                     <div key={i}
                       className={`aspect-square flex items-center justify-center rounded-md text-xs ${
-                        d.status === "present"
-                          ? "bg-success/20 text-success"
+                        d.day === 0 
+                          ? "invisible" 
+                          : d.status === "present"
+                          ? "bg-success/20 text-success font-bold"
                           : d.status === "absent"
-                          ? "bg-destructive/20 text-destructive"
+                          ? "bg-destructive/20 text-destructive font-bold"
                           : "bg-muted text-muted-foreground"
                       }`}
                     >
-                      {d.day}
+                      {d.day !== 0 && d.day}
                     </div>
                   ))}
                 </div>
