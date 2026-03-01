@@ -49,6 +49,25 @@ const AdminCourses = () => {
     department: ""
   });
 
+  useEffect(() => {
+    if (courseForm.department && addDialog) {
+      const fetchGeneratedCode = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/admin/courses/generate-code?department=${encodeURIComponent(courseForm.department)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.code) {
+            setCourseForm(prev => ({ ...prev, course_code: data.code }));
+          }
+        } catch (err) {
+          console.error("Failed to generate code", err);
+        }
+      };
+      fetchGeneratedCode();
+    }
+  }, [courseForm.department, addDialog, token]);
+
   const loadData = async () => {
     if (!token) return;
     setLoading(true);

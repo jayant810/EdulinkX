@@ -55,6 +55,31 @@ async function generateTeacherId() {
   return `${prefix}${nextSeq.toString().padStart(3, '0')}`;
 }
 
+// Helper to generate course code based on department name
+async function generateCourseCode(deptName) {
+  if (!deptName) return "XX001"; // Fallback
+
+  const words = deptName.trim().split(/\s+/);
+  let prefix = "";
+
+  if (words.length === 1) {
+    const word = words[0];
+    // First letter and last letter
+    prefix = (word[0] + word[word.length - 1]).toUpperCase();
+  } else {
+    // names with 2 or 3 words (any >= 2)
+    const word = words[0];
+    // first letter of the first word and the second letter of the first word
+    prefix = (word[0] + (word[1] || 'X')).toUpperCase();
+  }
+
+  // "the number will be counting for any department" - global count
+  const { rows } = await pool.query("SELECT COUNT(*) as count FROM courses");
+  const nextSeq = parseInt(rows[0].count) + 1;
+
+  return `${prefix}${nextSeq.toString().padStart(3, '0')}`;
+}
+
 // Middleware: Check if user is admin
 function isAdmin(req, res, next) {
   if (req.user && req.user.role === 'admin') {
@@ -143,6 +168,17 @@ router.post("/departments/:deptName/bulk-students", upload.single('file'), async
 
 // --- COURSES ---
 
+router.get("/courses/generate-code", async (req, res) => {
+  const { department } = req.query;
+  if (!department) return res.status(400).json({ error: "Department is required" });
+  try {
+    const code = await generateCourseCode(department);
+    res.json({ code });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 router.get("/courses", async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -159,8 +195,11 @@ router.get("/courses", async (req, res) => {
 });
 
 router.post("/courses", async (req, res) => {
-  const { name, code, description, credits, timing, department } = req.body;
+  let { name, code, description, credits, timing, department } = req.body;
   try {
+    if (!code) {
+      code = await generateCourseCode(department);
+    }
     const { rows } = await pool.query(
       "INSERT INTO courses (course_name, course_code, course_description, credits, course_timing, department) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
       [name, code, description, credits, timing, department]
