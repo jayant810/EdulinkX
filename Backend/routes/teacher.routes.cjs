@@ -109,7 +109,7 @@ router.post("/attendance/bulk", async (req, res) => {
       if (user.length > 0) {
         await client.query(
           "INSERT INTO attendance_records (session_id, student_user_id, status) VALUES ($1, $2, $3) ON CONFLICT (session_id, student_user_id) DO UPDATE SET status = EXCLUDED.status",
-          [sessionId, user[0].id, record.status === 'present' ? 'present' : 'absent']
+          [sessionId, user[0].id, record.status]
         );
       }
     }
@@ -433,7 +433,7 @@ router.get("/courses/:courseId/students", async (req, res) => {
       if (session) {
         sessionId = session.id;
         const [records] = await pool.execute("SELECT student_user_id, status FROM attendance_records WHERE session_id = ?", [sessionId]);
-        records.forEach(r => existingRecords[r.student_user_id] = r.status === 'present');
+        records.forEach(r => existingRecords[r.student_user_id] = r.status);
       }
     }
     const [students] = await pool.execute(`

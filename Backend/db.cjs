@@ -252,12 +252,17 @@ const initializeDatabase = async () => {
       CREATE TABLE IF NOT EXISTS assignments (
         id SERIAL PRIMARY KEY,
         course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        teacher_user_id INT REFERENCES users(id) ON DELETE SET NULL,
         title VARCHAR(255) NOT NULL,
         description TEXT,
         type assignment_type DEFAULT 'pdf',
         due_date TIMESTAMP,
-        max_score INT DEFAULT 100
+        max_score INT DEFAULT 100,
+        duration_minutes INT DEFAULT 0
       );
+
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS teacher_user_id INT REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS duration_minutes INT DEFAULT 0;
 
       CREATE TABLE IF NOT EXISTS assignment_questions (
         id SERIAL PRIMARY KEY,
