@@ -119,29 +119,48 @@ router.get("/attendance/subjects", async (req, res) => {
 
 // 6. Attendance Calendar
 router.get("/attendance/calendar", async (req, res) => {
+... (existing code) ...
+});
+
+// 6.5 Attendance Summary
+router.get("/attendance/summary", async (req, res) => {
   const studentId = req.user.id;
-  const { month, year, courseId } = req.query;
   try {
-    let query = `
-      SELECT s.class_date, r.status
-      FROM attendance_sessions s
-      JOIN attendance_records r ON r.session_id = s.id
-      WHERE r.student_user_id = ?
-    `;
-    const params = [studentId];
+    // Overall Stats
+    const [[stats]] = await pool.execute(`
+      SELECT 
+        COUNT(*) as total_classes,
+        SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count
+      FROM attendance_records 
+      WHERE student_user_id = ?`, [studentId]);
 
-    if (month && year) {
-      query += ` AND EXTRACT(MONTH FROM s.class_date) = ? AND EXTRACT(YEAR FROM s.class_date) = ?`;
-      params.push(month, year);
-    }
-    if (courseId) {
-      query += ` AND s.course_id = ?`;
-      params.push(courseId);
-    }
+    // Breakdown by subject
+    const [breakdown] = await pool.execute(`
+      SELECT c.course_name as subject,
+             COUNT(r.id) as total,
+             SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) as present
+      FROM courses c
+      JOIN course_students cs ON cs.course_id = c.id
+      LEFT JOIN attendance_sessions s ON s.course_id = c.id
+      LEFT JOIN attendance_records r ON r.session_id = s.id AND r.student_user_id = ?
+      WHERE cs.student_user_id = ?
+      GROUP BY c.id, c.course_name`, [studentId, studentId]);
 
-    const [rows] = await pool.execute(query, params);
-    res.json(rows);
+    const totalClasses = parseInt(stats?.total_classes || 0);
+    const presentCount = parseInt(stats?.present_count || 0);
+
+    res.json({
+      overall: totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0,
+      present: presentCount,
+      absent: totalClasses - presentCount,
+      total: totalClasses,
+      breakdown: breakdown.map(b => ({
+        subject: b.subject,
+        percentage: parseInt(b.total) > 0 ? Math.round((parseInt(b.present) / parseInt(b.total)) * 100) : 0
+      }))
+    });
   } catch (err) {
+    console.error("[Attendance Summary] Error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
