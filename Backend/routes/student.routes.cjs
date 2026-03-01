@@ -119,7 +119,31 @@ router.get("/attendance/subjects", async (req, res) => {
 
 // 6. Attendance Calendar
 router.get("/attendance/calendar", async (req, res) => {
-... (existing code) ...
+  const studentId = req.user.id;
+  const { month, year, courseId } = req.query;
+  try {
+    let query = `
+      SELECT s.class_date, r.status
+      FROM attendance_sessions s
+      JOIN attendance_records r ON r.session_id = s.id
+      WHERE r.student_user_id = ?
+    `;
+    const params = [studentId];
+
+    if (month && year) {
+      query += ` AND EXTRACT(MONTH FROM s.class_date) = ? AND EXTRACT(YEAR FROM s.class_date) = ?`;
+      params.push(month, year);
+    }
+    if (courseId) {
+      query += ` AND s.course_id = ?`;
+      params.push(courseId);
+    }
+
+    const [rows] = await pool.execute(query, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // 6.5 Attendance Summary
