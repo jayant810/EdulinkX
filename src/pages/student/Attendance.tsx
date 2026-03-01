@@ -90,16 +90,24 @@ const StudentAttendance = () => {
           // Check if it's a holiday in DB
           const holiday = holidays.find(h => h.holiday_date.split('T')[0] === dateStr);
           
-          let status = attendanceMap[i] || "working";
-          if (!attendanceMap[i]) {
-            if (holiday || isWeekend) status = "holiday";
-            else status = "no-class";
+          let status = "working";
+          let title = "";
+
+          if (holiday || isWeekend) {
+            status = "holiday";
+            title = holiday ? holiday.title : "Weekend";
+          } else if (selectedCourse) {
+            // Only show attendance status if a course is selected
+            status = attendanceMap[i] || "not_marked";
+            title = status === "not_marked" ? "Attendance not marked" : "";
+          } else {
+            status = "none";
           }
 
           calendarArray.push({
             day: i,
             status: status,
-            title: holiday ? holiday.title : (isWeekend ? "Weekend" : "")
+            title: title
           });
         }
         setCalendarDays(calendarArray);
@@ -217,28 +225,39 @@ const StudentAttendance = () => {
                           ? "bg-destructive text-destructive-foreground font-bold shadow-sm"
                           : d.status === "not_marked"
                           ? "bg-muted border-2 border-dashed border-muted-foreground/30 text-muted-foreground animate-pulse"
+                          : d.status === "holiday"
+                          ? "bg-blue-100 text-blue-700 font-medium"
                           : "bg-muted/30 text-muted-foreground/50"
                       }`}
-                      title={d.title || (d.status === "not_marked" ? "Attendance not marked yet" : "")}
+                      title={d.title}
                     >
                       {d.day !== 0 && d.day}
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-wrap gap-4 mt-4 text-[10px]">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded bg-success/20" />
-                    <span>Present</span>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 mt-6 text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-success" />
+                    <span className="font-medium text-muted-foreground uppercase tracking-wider">Present</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded bg-destructive/20" />
-                    <span>Absent</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-destructive" />
+                    <span className="font-medium text-muted-foreground uppercase tracking-wider">Absent</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded bg-muted" />
-                    <span>Holiday/No Class</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded border-2 border-dashed border-muted-foreground/30 bg-muted" />
+                    <span className="font-medium text-muted-foreground uppercase tracking-wider">Not Marked</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-blue-100" />
+                    <span className="font-medium text-muted-foreground uppercase tracking-wider">Holiday/Weekend</span>
                   </div>
                 </div>
+                {!selectedCourse && (
+                  <p className="mt-4 p-2 bg-primary/5 border border-primary/10 rounded-md text-[10px] text-center text-primary italic">
+                    Select a course from the list to see your specific attendance records.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
