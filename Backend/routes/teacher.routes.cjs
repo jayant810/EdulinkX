@@ -6,6 +6,7 @@ const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const xlsx = require("xlsx");
 const { getDriveService, getOrCreateFolder, uploadFile } = require("../utils/googleDrive.cjs");
+const { parseAnswerKeyUpload } = require("../utils/autograder.cjs");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -448,6 +449,19 @@ router.post("/exams", async (req, res) => {
         );
       }
     }
+    if (grading_method !== 'manual' && answer_key_url) {
+      try {
+        const localPath = path.join(__dirname, '../public', answer_key_url);
+        if (fs.existsSync(localPath)) {
+          console.log(`[Autograder] Forwarding Answer Key to Autograder for Exam ${examId}`);
+          const fileBuffer = fs.readFileSync(localPath);
+          await parseAnswerKeyUpload(fileBuffer, path.basename(answer_key_url), examId);
+        }
+      } catch (err) {
+        console.error("[Autograder] Failed to forward Answer Key:", err.message);
+      }
+    }
+
     await client.query('COMMIT');
     res.status(201).json({ id: examId });
   } catch (err) {
@@ -659,6 +673,19 @@ router.post("/assignments", async (req, res) => {
       }
     }
 
+    if (grading_method !== 'manual' && answer_key_url) {
+      try {
+        const localPath = path.join(__dirname, '../public', answer_key_url);
+        if (fs.existsSync(localPath)) {
+          console.log(`[Autograder] Forwarding Answer Key to Autograder for Assignment ${assignmentId}`);
+          const fileBuffer = fs.readFileSync(localPath);
+          await parseAnswerKeyUpload(fileBuffer, path.basename(answer_key_url), assignmentId);
+        }
+      } catch (err) {
+        console.error("[Autograder] Failed to forward Answer Key:", err.message);
+      }
+    }
+
     await client.query('COMMIT');
     res.status(201).json({ id: assignmentId, message: "Assignment created successfully" });
   } catch (err) {
@@ -736,6 +763,19 @@ router.put("/assignments/:id", async (req, res) => {
           "INSERT INTO assignment_questions (assignment_id, question_text, options, correct_answer, marks) VALUES ($1, $2, $3, $4, $5)",
           [id, q.question_text, q.options ? JSON.stringify(q.options) : null, q.correct_answer, q.marks || 1]
         );
+      }
+    }
+
+    if (grading_method !== 'manual' && answer_key_url) {
+      try {
+        const localPath = path.join(__dirname, '../public', answer_key_url);
+        if (fs.existsSync(localPath)) {
+          console.log(`[Autograder] Forwarding Answer Key to Autograder for Assignment ${id}`);
+          const fileBuffer = fs.readFileSync(localPath);
+          await parseAnswerKeyUpload(fileBuffer, path.basename(answer_key_url), id);
+        }
+      } catch (err) {
+        console.error("[Autograder] Failed to forward Answer Key:", err.message);
       }
     }
 
