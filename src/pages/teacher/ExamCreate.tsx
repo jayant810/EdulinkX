@@ -246,7 +246,7 @@ const TeacherExamCreate = () => {
                     </SelectTrigger>
                     <SelectContent>
                       {courses.map((c: any) => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.course_code} - {c.course_name}</SelectItem>
+                        <SelectItem key={c.id} value={String(c.id)}>{c.code} - {c.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
