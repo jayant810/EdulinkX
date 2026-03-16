@@ -102,37 +102,14 @@ app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
   res.json({ url: fileUrl });
 });
 
-// Dedicated Answer Key Upload (Auto-uploads to Google Drive)
-const fs = require('fs');
-app.post('/api/upload-answer-key', verifyToken, upload.single('file'), async (req, res) => {
+// Dedicated Answer Key Upload (Auto-uploads to Cloudinary)
+const { cloudinaryUpload } = require("./utils/cloudinary.cjs");
+app.post('/api/upload-answer-key', verifyToken, cloudinaryUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
-  const localFilePath = path.join(__dirname, 'public/uploads', req.file.filename);
-  let finalUrl = `/uploads/${req.file.filename}`;
-  
-  try {
-    const { getDriveService, getOrCreateFolder, uploadFile } = require("./utils/googleDrive.cjs");
-    const drive = await getDriveService();
-    if (drive) {
-      console.log(`[Google Drive] Uploading Answer Key...`);
-      const rootId = await getOrCreateFolder(drive, "EdulinkX");
-      const answerKeysId = await getOrCreateFolder(drive, "AnswerKeys", rootId);
-      
-      const uploadResult = await uploadFile(localFilePath, `AnswerKey-${Date.now()}${path.extname(req.file.originalname)}`, answerKeysId);
-      
-      if (uploadResult) {
-        console.log(`[Google Drive] Answer Key uploaded successfully. ID: ${uploadResult.id}`);
-        finalUrl = uploadResult.url;
-        
-        // Cleanup local file
-        fs.unlinkSync(localFilePath);
-      }
-    }
-  } catch (err) {
-    console.warn("[Google Drive] Answer Key auto-upload failed, using local URL:", err.message);
-  }
-
-  res.json({ url: finalUrl });
+  // With CloudinaryStorage, req.file.path is already the Cloudinary URL
+  console.log(`[Cloudinary] Answer Key uploaded successfully: ${req.file.path}`);
+  res.json({ url: req.file.path });
 });
 
 app.use("/api", verifyToken, assignmentRoutes);

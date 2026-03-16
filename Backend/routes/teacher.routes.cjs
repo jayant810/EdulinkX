@@ -5,7 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const xlsx = require("xlsx");
-const { getDriveService, getOrCreateFolder, uploadFile } = require("../utils/googleDrive.cjs");
+const { uploadToCloudinary } = require("../utils/cloudinary.cjs");
 const { parseAnswerKeyUpload } = require("../utils/autograder.cjs");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -307,43 +307,33 @@ router.post("/courses/:courseId/lectures", async (req, res) => {
     const [[owner]] = await pool.execute("SELECT id FROM course_teachers WHERE course_id = ? AND teacher_user_id = ?", [courseId, teacherId]);
     if (!owner) return res.status(403).json({ error: "Not authorized" });
 
-    // --- GOOGLE DRIVE AUTO-UPLOAD ---
+    // --- CLOUDINARY AUTO-UPLOAD ---
     if (video_type === 'local' && video_url && video_url.startsWith('/uploads/')) {
       try {
-        console.log(`[Google Drive] Starting auto-upload for: ${video_url}`);
-        const drive = await getDriveService();
-        if (drive) {
-          // 1. Get Course & Department Info for folder structure
-          const [[courseInfo]] = await pool.execute("SELECT course_name, department FROM courses WHERE id = ?", [courseId]);
-          const deptName = courseInfo?.department || "General";
-          const courseName = courseInfo?.course_name || `Course-${courseId}`;
+        console.log(`[Cloudinary] Starting auto-upload for: ${video_url}`);
+        
+        // 1. Determine folder: edulinkx/lectures
+        const folder = 'edulinkx/lectures';
 
-          // 2. Build Folder Hierarchy: EdulinkX -> [Department] -> [Course]
-          const rootId = await getOrCreateFolder(drive, "EdulinkX");
-          const deptId = await getOrCreateFolder(drive, deptName, rootId);
-          const courseFolderId = await getOrCreateFolder(drive, courseName, deptId);
-
-          // 3. Upload File
-          const localFilePath = path.join(__dirname, '../public', video_url);
-          if (fs.existsSync(localFilePath)) {
-            const uploadResult = await uploadFile(localFilePath, `${title || 'Lecture'}-${Date.now()}.mp4`, courseFolderId);
+        // 2. Upload File
+        const localFilePath = path.join(__dirname, '../public', video_url);
+        if (fs.existsSync(localFilePath)) {
+          const uploadResult = await uploadToCloudinary(localFilePath, folder);
+          
+          if (uploadResult) {
+            console.log(`[Cloudinary] Upload successful. ID: ${uploadResult.id}`);
+            // Update video_url to the Cloudinary URL
+            video_url = uploadResult.url;
+            // Switch type to 'url' because it's now hosted externally
+            video_type = 'url';
             
-            if (uploadResult) {
-              console.log(`[Google Drive] Upload successful. ID: ${uploadResult.id}`);
-              // Update video_url to the Google Drive stream URL
-              video_url = uploadResult.url;
-              // Switch type to 'url' because it's now hosted externally
-              video_type = 'url';
-              
-              // 4. Cleanup local file
-              fs.unlinkSync(localFilePath);
-              console.log(`[Google Drive] Local file deleted: ${localFilePath}`);
-            }
+            // 3. Cleanup local file
+            fs.unlinkSync(localFilePath);
+            console.log(`[Cloudinary] Local file deleted: ${localFilePath}`);
           }
         }
-      } catch (driveErr) {
-        console.error("[Google Drive] Auto-upload failed, falling back to local:", driveErr.message);
-        // Fallback: keep it as local if Drive fails
+      } catch (cloudErr) {
+        console.error("[Cloudinary] Auto-upload failed, falling back to local:", cloudErr.message);
       }
     }
 
@@ -356,7 +346,7 @@ router.post("/courses/:courseId/lectures", async (req, res) => {
       "INSERT INTO course_lectures (course_id, title, sub_title, video_url, notes_url, lecture_order, is_interactive, interactions, video_type, ai_summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [courseId, title, sub_title, video_url, notes_url || null, lecture_order || 1, is_interactive || false, JSON.stringify(interactions) || null, video_type || 'url', ai_summary || null]
     );
-    res.status(201).json({ message: "Lecture added successfully (Processed by Google Drive)" });
+    res.status(201).json({ message: "Lecture added successfully (Processed by Cloudinary)" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
