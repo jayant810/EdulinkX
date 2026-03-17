@@ -415,10 +415,11 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
 
     // Fetch exam details to check if AI grading is enabled
-    const [[exam]] = await pool.execute(
-      "SELECT grading_method, answer_key_url, ai_grading_prompt FROM exams WHERE id = ?",
+    const { rows: examRows } = await client.query(
+      "SELECT grading_method, answer_key_url, ai_grading_prompt FROM exams WHERE id = $1",
       [examId]
     );
+    const exam = examRows[0];
 
     if (!exam) {
       return res.status(404).json({ error: "Exam not found" });
@@ -459,15 +460,19 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
       }
     }
 
-    await pool.execute(
-      "INSERT INTO exam_submissions (exam_id, student_id, file_url, status, score, feedback) VALUES (?, ?, ?, ?, ?, ?)",
+    await client.query(
+      "INSERT INTO exam_submissions (exam_id, student_id, file_url, status, score, feedback) VALUES ($1, $2, $3, $4, $5, $6)",
       [examId, studentId, `/uploads/exams/${req.file.filename}`, status, score, feedback]
     );
 
+    await client.query('COMMIT');
     res.status(201).json({ success: true, status, score, feedback });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: "Server error" });
+  } finally {
+    client.release();
   }
 });
 
@@ -523,10 +528,11 @@ router.post("/exams/:id/submit/short", async (req, res) => {
     await client.query('BEGIN');
 
     // 1. Fetch exam and questions with expected answers
-    const [[exam]] = await client.query(
+    const { rows: examRows } = await client.query(
       "SELECT grading_method, ai_grading_prompt FROM exams WHERE id = $1",
       [examId]
     );
+    const exam = examRows[0];
     const { rows: questions } = await client.query(
       "SELECT id, question_text, correct_answer, marks FROM exam_questions WHERE exam_id = $1",
       [examId]
