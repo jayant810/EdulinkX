@@ -512,6 +512,90 @@ router.post("/exams/:id/submit/mcq", async (req, res) => {
   }
 });
 
+// 10.3 POST Short Answer Exam Submission (AI Graded)
+router.post("/exams/:id/submit/short", async (req, res) => {
+  const examId = req.params.id;
+  const studentId = req.user.id;
+  const { answers } = req.body; // { question_id: answer_text }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Fetch exam and questions with expected answers
+    const [[exam]] = await client.query(
+      "SELECT grading_method, ai_grading_prompt FROM exams WHERE id = $1",
+      [examId]
+    );
+    const { rows: questions } = await client.query(
+      "SELECT id, question_text, correct_answer, marks FROM exam_questions WHERE exam_id = $1",
+      [examId]
+    );
+
+    let totalScore = 0;
+    let detailedFeedback = [];
+
+    // 2. Grade each question
+    const { gradeSubmissionText } = require("../utils/autograder.cjs");
+    
+    for (const q of questions) {
+      const studentAnswer = answers[q.id] || "";
+      const expectedAnswer = q.correct_answer;
+      
+      let qScore = 0;
+      let qFeedback = "";
+
+      if (studentAnswer.trim()) {
+        try {
+          // Default to gemini if not manual
+          const method = exam.grading_method === 'manual' ? 'gemini' : (exam.grading_method === 'auto_similarity' ? 'similarity' : 'gemini');
+          
+          const result = await gradeSubmissionText(
+            studentAnswer, 
+            expectedAnswer, 
+            method, 
+            q.question_text
+          );
+
+          if (result && result.grading_result) {
+            // score is 0-100, scale to question marks
+            qScore = (result.grading_result.score / 100) * (q.marks || 1);
+            qFeedback = result.grading_result.feedback;
+          } else if (result && result.similarity_score !== undefined) {
+            qScore = result.passed ? (q.marks || 1) : 0;
+            qFeedback = `Similarity: ${result.similarity_score}%`;
+          }
+        } catch (gradErr) {
+          console.error(`[AI Grade Error] Question ${q.id}:`, gradErr.message);
+          qFeedback = "AI Grading failed. Pending manual review.";
+        }
+      }
+
+      totalScore += qScore;
+      detailedFeedback.push({
+        question_id: q.id,
+        score: qScore,
+        feedback: qFeedback
+      });
+    }
+
+    // 3. Save submission
+    await client.query(
+      "INSERT INTO exam_submissions (exam_id, student_id, status, score, feedback, answers) VALUES ($1, $2, 'graded', $3, $4, $5)",
+      [examId, studentId, totalScore, JSON.stringify(detailedFeedback), JSON.stringify(answers)]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, score: totalScore, status: 'graded' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error("[Submit Short Exam] Error:", err);
+    res.status(500).json({ error: "Server error", details: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // 11. Grades
 router.get("/grades", async (req, res) => {
   const studentId = req.user.id;

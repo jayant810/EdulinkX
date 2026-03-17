@@ -126,7 +126,10 @@ const TakeExam = () => {
         const formData = new FormData();
         formData.append("pdf", pdfFile);
         options.body = formData;
-        // Don't set Content-Type for FormData
+      } else if (exam.exam_type === 'short') {
+        url = `${API_BASE}/api/student/exams/${id}/submit/short`;
+        options.headers["Content-Type"] = "application/json";
+        options.body = JSON.stringify({ answers });
       } else {
         url = `${API_BASE}/api/student/exams/${id}/submit/mcq`;
         options.headers["Content-Type"] = "application/json";
