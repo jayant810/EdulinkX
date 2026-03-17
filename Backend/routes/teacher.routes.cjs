@@ -433,9 +433,12 @@ router.post("/exams", async (req, res) => {
     const examId = resultRows[0].id;
     if (questions && questions.length > 0) {
       for (const q of questions) {
+        // Use correctAnswer if available (MCQ), otherwise use expectedAnswer (Short Answer)
+        const finalCorrectAnswer = q.correctAnswer || q.expectedAnswer || null;
+        
         await client.query(
           "INSERT INTO exam_questions (exam_id, question_text, options, correct_answer, marks) VALUES ($1, $2, $3, $4, $5)",
-          [examId, q.question, q.options ? JSON.stringify(q.options) : null, q.correctAnswer, q.marks]
+          [examId, q.question, q.options ? JSON.stringify(q.options) : null, finalCorrectAnswer, q.marks]
         );
       }
     }

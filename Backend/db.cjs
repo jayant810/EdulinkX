@@ -443,11 +443,13 @@ const initializeDatabase = async () => {
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS answer_key_url TEXT;
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS ai_grading_prompt TEXT;
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS question_paper_url TEXT;
 
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS answer_key_url TEXT;
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS ai_grading_prompt TEXT;
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS results_published BOOLEAN DEFAULT FALSE;
+      ALTER TABLE exams ADD COLUMN IF NOT EXISTS question_paper_url TEXT;
     `);
 
     // 3. Indexes
