@@ -47,6 +47,7 @@ import TeacherAnnouncements from "./pages/teacher/Announcements";
 import TeacherMessages from "./pages/teacher/Messages";
 import TeacherSettings from "./pages/teacher/Settings";
 import ManageCourse from "@/pages/teacher/ManageCourse";
+import HODDashboard from "./pages/teacher/HODDashboard";
 
 // Admin Pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -364,6 +365,15 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["teacher"]}>
                     <TeacherSettings />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/teacher/hod"
+                element={
+                  <ProtectedRoute allowedRoles={["teacher"]}>
+                    <HODDashboard />
                   </ProtectedRoute>
                 }
               />

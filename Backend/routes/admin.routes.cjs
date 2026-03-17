@@ -495,6 +495,99 @@ router.post("/departments/:name/process-bulk", async (req, res) => {
   }
 });
 
+// --- DEPARTMENT-TEACHER MANAGEMENT ---
+
+// GET /admin/departments/:name/teachers — list teachers in a department with roles
+router.get("/departments/:name/teachers", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.employee_code, tp.designation, dt.role as dept_role
+      FROM department_teachers dt
+      JOIN departments d ON dt.department_id = d.id
+      JOIN users u ON dt.teacher_user_id = u.id
+      LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+      WHERE d.name = $1
+      ORDER BY dt.role DESC, u.name ASC
+    `, [req.params.name]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// GET /admin/teachers/eligible-dept?department=X — teachers not in selected department
+router.get("/teachers/eligible-dept", async (req, res) => {
+  const { department } = req.query;
+  try {
+    const { rows: dept } = await pool.query("SELECT id FROM departments WHERE name = $1", [department]);
+    if (dept.length === 0) return res.status(404).json({ error: "Department not found" });
+    const deptId = dept[0].id;
+
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.employee_code, tp.designation
+      FROM users u
+      LEFT JOIN teacher_profiles tp ON u.id = tp.user_id
+      WHERE u.role = 'teacher'
+        AND u.id NOT IN (SELECT teacher_user_id FROM department_teachers WHERE department_id = $1)
+      ORDER BY u.name ASC
+    `, [deptId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/departments/:name/add-teacher — assign teacher to dept with role
+router.post("/departments/:name/add-teacher", async (req, res) => {
+  const { teacherId, role } = req.body;
+  try {
+    const { rows: dept } = await pool.query("SELECT id FROM departments WHERE name = $1", [req.params.name]);
+    if (dept.length === 0) return res.status(404).json({ error: "Department not found" });
+
+    await pool.query(
+      "INSERT INTO department_teachers (department_id, teacher_user_id, role) VALUES ($1, $2, $3) ON CONFLICT (department_id, teacher_user_id) DO UPDATE SET role = $3",
+      [dept[0].id, teacherId, role || 'professor']
+    );
+
+    // Also update teacher_profiles department field
+    await pool.query("UPDATE teacher_profiles SET department = $1 WHERE user_id = $2", [req.params.name, teacherId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/departments/:name/update-teacher-role — change role
+router.post("/departments/:name/update-teacher-role", async (req, res) => {
+  const { teacherId, role } = req.body;
+  try {
+    const { rows: dept } = await pool.query("SELECT id FROM departments WHERE name = $1", [req.params.name]);
+    if (dept.length === 0) return res.status(404).json({ error: "Department not found" });
+
+    await pool.query(
+      "UPDATE department_teachers SET role = $1 WHERE department_id = $2 AND teacher_user_id = $3",
+      [role, dept[0].id, teacherId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/departments/remove-teacher — remove teacher from department
+router.post("/departments/remove-teacher", async (req, res) => {
+  const { teacherId } = req.body;
+  try {
+    await pool.query("DELETE FROM department_teachers WHERE teacher_user_id = $1", [teacherId]);
+    // Clear department from teacher_profiles
+    await pool.query("UPDATE teacher_profiles SET department = NULL WHERE user_id = $1", [teacherId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
 // --- COURSE PARTICIPANT MANAGEMENT ---
 
 // GET /admin/courses/:id/participants — List all students and teachers enrolled in a course
@@ -654,6 +747,51 @@ router.post("/courses/bulk-enroll", upload.single('file'), async (req, res) => {
     res.json({ success, warnings });
   } catch (err) {
     res.status(500).json({ error: "Bulk enrollment failed", details: err.message });
+  }
+});
+
+// --- EXAM RESULTS MANAGEMENT ---
+
+// GET /admin/exams — List all exams
+router.get("/exams", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT e.id, e.title, e.exam_type as type, e.exam_date, e.start_time, e.duration_minutes, e.results_published, e.status, c.course_code, c.course_name, d.name as department
+      FROM exams e
+      JOIN courses c ON e.course_id = c.id
+      JOIN departments d ON c.department = d.name
+      ORDER BY e.exam_date DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/exams/publish-results — Toggle result visibility
+router.post("/exams/publish-results", async (req, res) => {
+  const { scope, departmentId, courseId, published } = req.body;
+  // scope: 'all', 'department', 'course'
+  // published: boolean (true to reveal, false to hide)
+  
+  try {
+    let query = "UPDATE exams SET results_published = $1";
+    let params = [published];
+    let condition = "";
+
+    if (scope === 'course' && courseId) {
+      condition = " WHERE course_id = $2";
+      params.push(courseId);
+    } else if (scope === 'department' && departmentId) {
+      condition = " WHERE course_id IN (SELECT id FROM courses WHERE department = (SELECT name FROM departments WHERE id = $2))";
+      params.push(departmentId);
+    }
+
+    await pool.query(query + condition, params);
+    
+    res.json({ success: true, message: `Exam results visibility updated successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,8 @@ import {
   Trash2,
   Save,
   ChevronLeft,
+  BookOpen,
+  CheckCircle2
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
@@ -51,8 +53,13 @@ const TeacherExamCreate = () => {
     date: "",
     time: "",
     instructions: "",
-    total_marks: 100
+    total_marks: 100,
+    grading_method: "manual",
+    answer_key_url: "",
+    ai_grading_prompt: ""
   });
+
+  const [uploadingKey, setUploadingKey] = useState(false);
 
   const [mcqQuestions, setMcqQuestions] = useState<MCQQuestion[]>([
     { id: 1, question: "", options: ["", "", "", ""], correctAnswer: "0", marks: 1 }
@@ -74,6 +81,11 @@ const TeacherExamCreate = () => {
   const handleCreateExam = async () => {
     if (!examData.title || !examData.course_id || !examData.date || !examData.time) {
       toast.error("Please fill in all basic exam details");
+      return;
+    }
+
+    if (examData.grading_method !== "manual" && !examData.answer_key_url) {
+      toast.error("An Answer Key PDF is required for AI Grading.");
       return;
     }
 
@@ -102,6 +114,36 @@ const TeacherExamCreate = () => {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAnswerKeyUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast.error("Answer key must be a PDF file");
+      return;
+    }
+
+    setUploadingKey(true);
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/upload-answer-key`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setExamData({ ...examData, answer_key_url: data.url });
+      toast.success("Answer Key uploaded successfully");
+    } catch (err) {
+      toast.error("Failed to upload Answer Key");
+    } finally {
+      setUploadingKey(false);
     }
   };
 
@@ -230,6 +272,71 @@ const TeacherExamCreate = () => {
                   onChange={(e) => setExamData({ ...examData, instructions: e.target.value })}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Autograder Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" />
+                Autograder Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Grading Method</label>
+                  <Select 
+                    value={examData.grading_method} 
+                    onValueChange={(val) => setExamData({ ...examData, grading_method: val })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Manual Grading</SelectItem>
+                      <SelectItem value="auto_similarity">AI Exact Match (Fuzzy Similarity)</SelectItem>
+                      <SelectItem value="auto_gemini">AI Comprehensive (Gemini Vision)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {examData.grading_method === 'manual' && "Teacher grades all submissions manually."}
+                    {examData.grading_method === 'auto_similarity' && "Best for short, factual answers. Uses OCR and exact text matching."}
+                    {examData.grading_method === 'auto_gemini' && "Best for long-form answers. Gemini evaluates conceptual understanding."}
+                  </p>
+                </div>
+
+                {examData.grading_method !== 'manual' && (
+                  <div>
+                    <label className="text-sm font-medium">Answer Key PDF</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input 
+                        type="file" 
+                        accept="application/pdf"
+                        onChange={handleAnswerKeyUpload}
+                        disabled={uploadingKey}
+                        className="flex-1"
+                      />
+                      {examData.answer_key_url && <CheckCircle2 className="h-5 w-5 text-success" />}
+                    </div>
+                    {uploadingKey && <p className="text-xs text-info mt-1">Uploading to Google Drive...</p>}
+                    {examData.answer_key_url && <p className="text-[10px] text-success truncate mt-1">Ready: {examData.answer_key_url}</p>}
+                  </div>
+                )}
+              </div>
+
+              {examData.grading_method !== 'manual' && (
+                <div>
+                  <label className="text-sm font-medium">Custom AI Prompt (Optional)</label>
+                  <Textarea 
+                    placeholder="e.g., Deduct 1 mark for missing units. Ignore minor spelling mistakes." 
+                    value={examData.ai_grading_prompt}
+                    onChange={(e) => setExamData({ ...examData, ai_grading_prompt: e.target.value })}
+                    className="mt-1 h-16 text-sm"
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
 

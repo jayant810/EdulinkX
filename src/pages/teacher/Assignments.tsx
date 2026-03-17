@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,8 +54,13 @@ const TeacherAssignments = () => {
     due_date: "",
     max_score: 100,
     duration_minutes: 30,
+    grading_method: "manual",
+    answer_key_url: "",
+    ai_grading_prompt: "",
     questions: []
   });
+
+  const [uploadingKey, setUploadingKey] = useState(false);
 
   const resetForm = () => {
     setFormData({
@@ -66,6 +71,9 @@ const TeacherAssignments = () => {
       due_date: "",
       max_score: 100,
       duration_minutes: 30,
+      grading_method: "manual",
+      answer_key_url: "",
+      ai_grading_prompt: "",
       questions: []
     });
     setIsEditing(false);
@@ -87,6 +95,9 @@ const TeacherAssignments = () => {
         due_date: new Date(data.due_date).toISOString().slice(0, 16),
         max_score: data.max_score,
         duration_minutes: data.duration_minutes || 0,
+        grading_method: data.grading_method || "manual",
+        answer_key_url: data.answer_key_url || "",
+        ai_grading_prompt: data.ai_grading_prompt || "",
         questions: data.questions || []
       });
       setIsEditing(true);
@@ -163,6 +174,11 @@ const TeacherAssignments = () => {
       return;
     }
 
+    if (formData.grading_method !== "manual" && !formData.answer_key_url) {
+      toast.error("An Answer Key PDF is required for AI Grading.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const url = isEditing 
@@ -190,6 +206,36 @@ const TeacherAssignments = () => {
       toast.error("Error saving assignment");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAnswerKeyUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast.error("Answer key must be a PDF file");
+      return;
+    }
+
+    setUploadingKey(true);
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/upload-answer-key`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setFormData({ ...formData, answer_key_url: data.url });
+      toast.success("Answer Key uploaded successfully");
+    } catch (err) {
+      toast.error("Failed to upload Answer Key");
+    } finally {
+      setUploadingKey(false);
     }
   };
 
@@ -309,6 +355,66 @@ const TeacherAssignments = () => {
                       onChange={(e) => setFormData({...formData, due_date: e.target.value})}
                     />
                   </div>
+                </div>
+
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="text-sm font-bold flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Autograder Configuration
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Grading Method</label>
+                      <Select 
+                        value={formData.grading_method} 
+                        onValueChange={(val) => setFormData({...formData, grading_method: val})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual Grading</SelectItem>
+                          <SelectItem value="auto_similarity">AI Exact Match (Fuzzy Similarity)</SelectItem>
+                          <SelectItem value="auto_gemini">AI Comprehensive (Gemini Vision)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground p-1">
+                        {formData.grading_method === 'manual' && "Teacher grades all submissions manually."}
+                        {formData.grading_method === 'auto_similarity' && "Best for short, factual answers. Uses OCR and exact text matching."}
+                        {formData.grading_method === 'auto_gemini' && "Best for long-form answers. Gemini evaluates conceptual understanding."}
+                      </p>
+                    </div>
+
+                    {formData.grading_method !== 'manual' && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Answer Key PDF</label>
+                        <div className="flex items-center gap-2">
+                          <Input 
+                            type="file" 
+                            accept="application/pdf"
+                            onChange={handleAnswerKeyUpload}
+                            disabled={uploadingKey}
+                            className="flex-1"
+                          />
+                          {formData.answer_key_url && <CheckCircle2 className="h-5 w-5 text-success" />}
+                        </div>
+                        {uploadingKey && <p className="text-xs text-info">Uploading to Google Drive...</p>}
+                        {formData.answer_key_url && <p className="text-[10px] text-success truncate">Ready: {formData.answer_key_url}</p>}
+                      </div>
+                    )}
+                  </div>
+
+                  {formData.grading_method !== 'manual' && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Custom AI Prompt (Optional)</label>
+                      <Textarea 
+                        placeholder="e.g., Deduct 1 mark for missing units. Ignore minor spelling mistakes." 
+                        value={formData.ai_grading_prompt}
+                        onChange={(e) => setFormData({...formData, ai_grading_prompt: e.target.value})}
+                        className="h-16 text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {formData.type !== "pdf" && (

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Users, FileSpreadsheet, AlertCircle, CheckCircle2, Trash2, UserPlus, ArrowRight } from "lucide-react";
+import { Plus, Users, FileSpreadsheet, AlertCircle, CheckCircle2, Trash2, UserPlus, ArrowRight, GraduationCap, Crown } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -25,14 +25,19 @@ const AdminDepartments = () => {
   // Dialogs
   const [addDeptDialog, setAddDeptDialog] = useState(false);
   const [manageStudentsDialog, setManageStudentsDialog] = useState(false);
+  const [manageTeachersDialog, setManageTeachersDialog] = useState(false);
   const [manualAddDialog, setManualAddDialog] = useState(false);
+  const [addTeacherDialog, setAddTeacherDialog] = useState(false);
   const [bulkPreviewDialog, setBulkPreviewDialog] = useState(false);
 
   // Selection
   const [selectedDept, setSelectedDept] = useState<any>(null);
   const [deptStudents, setDeptStudents] = useState<any[]>([]);
+  const [deptTeachers, setDeptTeachers] = useState<any[]>([]);
   const [eligibleStudents, setEligibleStudents] = useState<any[]>([]);
+  const [eligibleTeachers, setEligibleTeachers] = useState<any[]>([]);
   const [bulkPreviewData, setBulkPreviewData] = useState<any[]>([]);
+  const [newTeacherRole, setNewTeacherRole] = useState("professor");
   
   const [deptForm, setDeptForm] = useState({ name: "", description: "" });
 
@@ -62,6 +67,16 @@ const AdminDepartments = () => {
     } catch (err) {}
   };
 
+  const loadDeptTeachers = async (deptName: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/departments/${deptName}/teachers`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setDeptTeachers(data);
+    } catch (err) {}
+  };
+
   const loadEligibleStudents = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/students/eligible`, {
@@ -69,6 +84,16 @@ const AdminDepartments = () => {
       });
       const data = await res.json();
       setEligibleStudents(data);
+    } catch (err) {}
+  };
+
+  const loadEligibleTeachers = async (deptName: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/teachers/eligible-dept?department=${encodeURIComponent(deptName)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setEligibleTeachers(data);
     } catch (err) {}
   };
 
@@ -126,6 +151,50 @@ const AdminDepartments = () => {
     } catch (err) {}
   };
 
+  const addTeacherToDept = async (teacherId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/departments/${selectedDept.name}/add-teacher`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ teacherId, role: newTeacherRole })
+      });
+      if (res.ok) {
+        toast.success("Teacher added");
+        loadEligibleTeachers(selectedDept.name);
+        loadDeptTeachers(selectedDept.name);
+      }
+    } catch (err) {}
+  };
+
+  const removeTeacher = async (teacherId: number) => {
+    if (!window.confirm("Remove teacher from this department?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/departments/remove-teacher`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ teacherId })
+      });
+      if (res.ok) {
+        toast.success("Teacher removed");
+        loadDeptTeachers(selectedDept.name);
+      }
+    } catch (err) {}
+  };
+
+  const updateTeacherRole = async (teacherId: number, role: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/departments/${selectedDept.name}/update-teacher-role`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ teacherId, role })
+      });
+      if (res.ok) {
+        toast.success(`Role updated to ${role.toUpperCase()}`);
+        loadDeptTeachers(selectedDept.name);
+      }
+    } catch (err) {}
+  };
+
   const handleBulkFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -137,7 +206,6 @@ const AdminDepartments = () => {
         body: formData
       });
       const data = await res.json();
-      // Only auto-check 'move' if found and NOT already assigned
       setBulkPreviewData(data.map((s: any) => ({ ...s, move: s.found && !s.already_assigned })));
       setBulkPreviewDialog(true);
       toast.success("Validation complete", { id: "bulk-dept" });
@@ -147,7 +215,6 @@ const AdminDepartments = () => {
   };
 
   const processBulkChanges = async () => {
-    // Filter to only send students that are found and marked for moving
     const studentsToMove = bulkPreviewData.filter(s => s.found && s.move);
     if (studentsToMove.length === 0) {
       toast.error("No students selected to move");
@@ -186,13 +253,20 @@ const AdminDepartments = () => {
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">{d.description || "No description provided."}</p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2">
                 <Button variant="outline" className="w-full" onClick={() => { 
                   setSelectedDept(d); 
                   loadDeptStudents(d.name);
                   setManageStudentsDialog(true); 
                 }}>
                   <Users className="h-4 w-4 mr-2" /> Manage Students
+                </Button>
+                <Button variant="outline" className="w-full" onClick={() => { 
+                  setSelectedDept(d); 
+                  loadDeptTeachers(d.name);
+                  setManageTeachersDialog(true); 
+                }}>
+                  <GraduationCap className="h-4 w-4 mr-2" /> Manage Teachers
                 </Button>
               </CardContent>
             </Card>
@@ -267,7 +341,100 @@ const AdminDepartments = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Manual Add Dialog */}
+        {/* Manage Teachers Dialog */}
+        <Dialog open={manageTeachersDialog} onOpenChange={setManageTeachersDialog}>
+          <DialogContent className="max-w-4xl max-h-[90vh]">
+            <DialogHeader>
+              <div className="flex justify-between items-center pr-8">
+                <DialogTitle>Teachers in {selectedDept?.name}</DialogTitle>
+                <Button variant="hero" size="sm" onClick={() => { loadEligibleTeachers(selectedDept.name); setAddTeacherDialog(true); }}>
+                  <UserPlus className="h-4 w-4 mr-2" /> Add Teacher
+                </Button>
+              </div>
+            </DialogHeader>
+            <ScrollArea className="h-[500px] mt-4 border rounded-md">
+              <div className="p-4">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-background border-b">
+                    <tr className="text-left text-xs font-bold text-muted-foreground uppercase">
+                      <th className="pb-2">Name</th>
+                      <th className="pb-2">Employee Code</th>
+                      <th className="pb-2">Designation</th>
+                      <th className="pb-2">Role</th>
+                      <th className="pb-2 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {deptTeachers.map(t => (
+                      <tr key={t.id} className="text-sm">
+                        <td className="py-3 font-medium">
+                          <div className="flex items-center gap-2">
+                            {t.name}
+                            {t.dept_role === 'hod' && <Crown className="h-4 w-4 text-amber-500" />}
+                          </div>
+                        </td>
+                        <td className="py-3 font-mono text-xs">{t.employee_code}</td>
+                        <td className="py-3 text-xs">{t.designation || "—"}</td>
+                        <td className="py-3">
+                          <select
+                            className="text-xs border rounded px-2 py-1 bg-background"
+                            value={t.dept_role}
+                            onChange={(e) => updateTeacherRole(t.id, e.target.value)}
+                          >
+                            <option value="professor">Professor</option>
+                            <option value="hod">Head of Dept</option>
+                          </select>
+                        </td>
+                        <td className="py-3 text-right">
+                          <Button variant="ghost" size="xs" className="text-destructive hover:bg-destructive/10" onClick={() => removeTeacher(t.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {deptTeachers.length === 0 && (
+                      <tr><td colSpan={5} className="text-center py-12 text-muted-foreground">No teachers assigned to this department.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Teacher to Dept Dialog */}
+        <Dialog open={addTeacherDialog} onOpenChange={setAddTeacherDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader><DialogTitle>Add Teacher to {selectedDept?.name}</DialogTitle></DialogHeader>
+            <div className="flex items-center gap-4 mb-4 p-3 bg-muted/30 rounded-lg">
+              <label className="text-sm font-medium whitespace-nowrap">Assign as:</label>
+              <select
+                className="border rounded px-3 py-1.5 text-sm bg-background flex-1"
+                value={newTeacherRole}
+                onChange={(e) => setNewTeacherRole(e.target.value)}
+              >
+                <option value="professor">Professor</option>
+                <option value="hod">Head of Department</option>
+              </select>
+            </div>
+            <ScrollArea className="h-[400px] border rounded-md p-4">
+              <div className="space-y-2">
+                {eligibleTeachers.map(t => (
+                  <div key={t.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium">{t.name}</p>
+                      <p className="text-xs text-muted-foreground">{t.employee_code} • {t.designation || "No designation"}</p>
+                    </div>
+                    <Button size="sm" onClick={() => addTeacherToDept(t.id)}>Add to Dept</Button>
+                  </div>
+                ))}
+                {eligibleTeachers.length === 0 && <p className="text-center py-12 text-muted-foreground">No eligible teachers found.</p>}
+              </div>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manual Add Students Dialog */}
         <Dialog open={manualAddDialog} onOpenChange={setManualAddDialog}>
           <DialogContent className="max-w-2xl">
             <DialogHeader><DialogTitle>Eligible Students (Not in any Dept)</DialogTitle></DialogHeader>

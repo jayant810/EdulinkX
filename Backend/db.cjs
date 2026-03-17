@@ -258,7 +258,10 @@ const initializeDatabase = async () => {
         type assignment_type DEFAULT 'pdf',
         due_date TIMESTAMP,
         max_score INT DEFAULT 100,
-        duration_minutes INT DEFAULT 0
+        duration_minutes INT DEFAULT 0,
+        grading_method VARCHAR(20) DEFAULT 'manual',
+        answer_key_url TEXT,
+        ai_grading_prompt TEXT
       );
 
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS teacher_user_id INT REFERENCES users(id) ON DELETE SET NULL;
@@ -295,6 +298,10 @@ const initializeDatabase = async () => {
         start_time TIME NOT NULL,
         instructions TEXT,
         total_marks INT DEFAULT 100,
+        grading_method VARCHAR(20) DEFAULT 'manual',
+        answer_key_url TEXT,
+        ai_grading_prompt TEXT,
+        results_published BOOLEAN DEFAULT FALSE,
         status exam_status DEFAULT 'draft',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -411,8 +418,11 @@ const initializeDatabase = async () => {
       CREATE TABLE IF NOT EXISTS department_teachers (
         department_id INT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
         teacher_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role VARCHAR(20) DEFAULT 'professor',
         PRIMARY KEY (department_id, teacher_user_id)
       );
+
+      ALTER TABLE department_teachers ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'professor';
 
       CREATE TABLE IF NOT EXISTS course_ai_queries (
         id SERIAL PRIMARY KEY,
@@ -424,6 +434,16 @@ const initializeDatabase = async () => {
       );
 
       INSERT INTO departments (name) VALUES ('Computer Science'), ('Electronics'), ('Mechanical'), ('Civil'), ('Business') ON CONFLICT DO NOTHING;
+
+      -- ALTER TABLES IF THEY ALREADY EXIST TO ADD NEW COLUMNS
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS answer_key_url TEXT;
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS ai_grading_prompt TEXT;
+
+      ALTER TABLE exams ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';
+      ALTER TABLE exams ADD COLUMN IF NOT EXISTS answer_key_url TEXT;
+      ALTER TABLE exams ADD COLUMN IF NOT EXISTS ai_grading_prompt TEXT;
+      ALTER TABLE exams ADD COLUMN IF NOT EXISTS results_published BOOLEAN DEFAULT FALSE;
     `);
 
     // 3. Indexes
