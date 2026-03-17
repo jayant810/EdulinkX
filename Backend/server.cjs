@@ -31,7 +31,7 @@ if (process.env.REDIS_URL || process.env.USE_REDIS === 'true') {
 app.use(cors());
 app.use(express.json());
 const path = require('path');
-const fs = require('fs');
+// const fs = require('fs');
 
 // --- MySQL pool ---
 const { pool, initializeDatabase } = require("./db.cjs");
