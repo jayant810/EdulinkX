@@ -431,13 +431,13 @@ router.get("/exams", async (req, res) => {
 
 router.post("/exams", async (req, res) => {
   const teacherId = req.user.id;
-  const { title, course_id, exam_type, duration, date, time, instructions, total_marks, questions, grading_method = 'manual', answer_key_url = null, ai_grading_prompt = null } = req.body;
+  const { title, course_id, exam_type, duration, date, time, instructions, total_marks, questions, grading_method = 'manual', answer_key_url = null, ai_grading_prompt = null, question_paper_url = null } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows: resultRows } = await client.query(
-      "INSERT INTO exams (course_id, teacher_id, title, exam_type, duration_minutes, exam_date, start_time, instructions, total_marks, grading_method, answer_key_url, ai_grading_prompt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
-      [course_id, teacherId, title, exam_type, duration, date, time, instructions, total_marks, grading_method, answer_key_url, ai_grading_prompt]
+      "INSERT INTO exams (course_id, teacher_id, title, exam_type, duration_minutes, exam_date, start_time, instructions, total_marks, grading_method, answer_key_url, ai_grading_prompt, question_paper_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id",
+      [course_id, teacherId, title, exam_type, duration, date, time, instructions, total_marks, grading_method, answer_key_url, ai_grading_prompt, question_paper_url]
     );
     const examId = resultRows[0].id;
     if (questions && questions.length > 0) {
@@ -631,7 +631,7 @@ router.get("/assignments", async (req, res) => {
 
 router.post("/assignments", async (req, res) => {
   const teacherId = req.user.id;
-  const { course_id, title, description, type, due_date, max_score, questions, duration_minutes, grading_method = 'manual', answer_key_url = null, ai_grading_prompt = null } = req.body;
+  const { course_id, title, description, type, due_date, max_score, questions, duration_minutes, grading_method = 'manual', answer_key_url = null, ai_grading_prompt = null, question_paper_url = null } = req.body;
 
   const client = await pool.connect();
   try {
@@ -644,8 +644,8 @@ router.post("/assignments", async (req, res) => {
     }
 
     const { rows: resultRows } = await client.query(
-      "INSERT INTO assignments (course_id, teacher_user_id, title, description, type, due_date, max_score, duration_minutes, grading_method, answer_key_url, ai_grading_prompt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
-      [course_id, teacherId, title, description, type || 'pdf', due_date, max_score || 100, duration_minutes || 0, grading_method, answer_key_url, ai_grading_prompt]
+      "INSERT INTO assignments (course_id, teacher_user_id, title, description, type, due_date, max_score, duration_minutes, grading_method, answer_key_url, ai_grading_prompt, question_paper_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
+      [course_id, teacherId, title, description, type || 'pdf', due_date, max_score || 100, duration_minutes || 0, grading_method, answer_key_url, ai_grading_prompt, question_paper_url]
     );
 
     const assignmentId = resultRows[0].id;
@@ -706,7 +706,7 @@ router.get("/assignments/:id", async (req, res) => {
 router.put("/assignments/:id", async (req, res) => {
   const teacherId = req.user.id;
   const { id } = req.params;
-  const { title, description, type, due_date, max_score, questions, duration_minutes, grading_method = 'manual', answer_key_url = null, ai_grading_prompt = null } = req.body;
+  const { title, description, type, due_date, max_score, questions, duration_minutes, grading_method = 'manual', answer_key_url = null, ai_grading_prompt = null, question_paper_url = null } = req.body;
 
   const client = await pool.connect();
   try {
@@ -723,8 +723,8 @@ router.put("/assignments/:id", async (req, res) => {
     }
 
     await client.query(
-      "UPDATE assignments SET title = $1, description = $2, type = $3, due_date = $4, max_score = $5, duration_minutes = $6, grading_method = $8, answer_key_url = $9, ai_grading_prompt = $10 WHERE id = $7",
-      [title, description, type, due_date, max_score, duration_minutes || 0, id, grading_method, answer_key_url, ai_grading_prompt]
+      "UPDATE assignments SET title = $1, description = $2, type = $3, due_date = $4, max_score = $5, duration_minutes = $6, grading_method = $8, answer_key_url = $9, ai_grading_prompt = $10, question_paper_url = $11 WHERE id = $7",
+      [title, description, type, due_date, max_score, duration_minutes || 0, id, grading_method, answer_key_url, ai_grading_prompt, question_paper_url]
     );
 
     // Update questions: simpler to delete and re-insert for this scale

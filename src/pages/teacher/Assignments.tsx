@@ -50,17 +50,20 @@ const TeacherAssignments = () => {
     course_id: "",
     title: "",
     description: "",
-    type: "pdf",
+    type: "pdf", // default changed to pdf since it's common
+    file_url: "",
     due_date: "",
     max_score: 100,
-    duration_minutes: 30,
+    duration_minutes: 0,
     grading_method: "manual",
     answer_key_url: "",
     ai_grading_prompt: "",
+    question_paper_url: "",
     questions: []
   });
 
   const [uploadingKey, setUploadingKey] = useState(false);
+  const [uploadingPaper, setUploadingPaper] = useState(false);
 
   const resetForm = () => {
     setFormData({
@@ -236,6 +239,36 @@ const TeacherAssignments = () => {
       toast.error("Failed to upload Answer Key");
     } finally {
       setUploadingKey(false);
+    }
+  };
+
+  const handleQuestionPaperUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast.error("Question paper must be a PDF file");
+      return;
+    }
+
+    setUploadingPaper(true);
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/upload-answer-key`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setFormData({ ...formData, question_paper_url: data.url });
+      toast.success("Question Paper uploaded successfully");
+    } catch (err) {
+      toast.error("Failed to upload Question Paper");
+    } finally {
+      setUploadingPaper(false);
     }
   };
 
@@ -416,6 +449,29 @@ const TeacherAssignments = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Question Paper Upload Section for PDF Assignments */}
+                {formData.type === "pdf" && (
+                  <div className="space-y-4 border-t pt-4">
+                    <h4 className="text-sm font-bold">Question Paper Upload</h4>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Upload Question Paper PDF</label>
+                      <p className="text-xs text-muted-foreground mb-2">Students will download this PDF to answer questions.</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input 
+                          type="file" 
+                          accept="application/pdf"
+                          onChange={handleQuestionPaperUpload}
+                          disabled={uploadingPaper}
+                          className="flex-1"
+                        />
+                        {formData.question_paper_url && <CheckCircle2 className="h-5 w-5 text-success" />}
+                      </div>
+                      {uploadingPaper && <p className="text-xs text-info mt-1">Uploading Question Paper to Google Drive...</p>}
+                      {formData.question_paper_url && <p className="text-[10px] text-success truncate mt-1">Ready: {formData.question_paper_url}</p>}
+                    </div>
+                  </div>
+                )}
 
                 {formData.type !== "pdf" && (
                   <div className="space-y-4 border-t pt-4">

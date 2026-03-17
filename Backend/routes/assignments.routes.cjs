@@ -4,6 +4,7 @@ const { pool } = require("../db.cjs");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { gradeSubmissionFile } = require("../utils/autograder.cjs");
 
 // ===== Multer PDF Upload Setup =====
 const uploadDir = path.join(__dirname, '../public/uploads/submissions');
@@ -101,12 +102,59 @@ router.post("/assignments/:id/submit/pdf", upload.single("pdf"), async (req, res
   try {
     if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
 
-    await pool.execute(
-      "INSERT INTO assignment_submissions (assignment_id, student_user_id, file_url, submission_text) VALUES (?, ?, ?, ?)",
-      [assignmentId, studentId, `/uploads/submissions/${req.file.filename}`, notes || null]
+    // Fetch assignment details to check if AI grading is enabled
+    const [[assignment]] = await pool.execute(
+      "SELECT grading_method, answer_key_url, ai_grading_prompt FROM assignments WHERE id = ?",
+      [assignmentId]
     );
 
-    res.status(201).json({ success: true });
+    if (!assignment) {
+      return res.status(404).json({ error: "Assignment not found" });
+    }
+
+    let score = null;
+    let feedback = null;
+    let status = 'submitted';
+
+    if (assignment.grading_method !== 'manual' && assignment.answer_key_url) {
+      // Trigger Autograder microservice
+      try {
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const method = assignment.grading_method === 'auto_similarity' ? 'similarity' : 'gemini';
+        
+        console.log(`[Autograder] Triggering grading for assignment ${assignmentId} using ${method}`);
+        const result = await gradeSubmissionFile(
+          fileBuffer, 
+          req.file.originalname, 
+          req.file.mimetype, 
+          assignmentId, 
+          0, // Assumes full assignment is one document/question context for now
+          method, 
+          assignment.ai_grading_prompt
+        );
+
+        if (result && result.grading_result) {
+          score = result.grading_result.score;
+          feedback = result.grading_result.feedback || result.grading_result.raw;
+          status = 'graded';
+        } else if (result && result.final_marks !== undefined) {
+          score = result.final_marks;
+          feedback = `Similarity Score: ${result.similarity_score}%`;
+          status = 'graded';
+        }
+      } catch (autoErr) {
+        console.error(`[Autograder] Failed to grade assignment ${assignmentId}:`, autoErr.message);
+        // Fallback to manual if API fails
+        feedback = `AI Grading failed: ${autoErr.message}. Pending manual review.`;
+      }
+    }
+
+    await pool.execute(
+      "INSERT INTO assignment_submissions (assignment_id, student_user_id, file_url, submission_text, status, score, feedback) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [assignmentId, studentId, `/uploads/submissions/${req.file.filename}`, notes || null, status, score, feedback]
+    );
+
+    res.status(201).json({ success: true, status, score, feedback });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });

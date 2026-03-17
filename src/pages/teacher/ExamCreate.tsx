@@ -56,10 +56,12 @@ const TeacherExamCreate = () => {
     total_marks: 100,
     grading_method: "manual",
     answer_key_url: "",
-    ai_grading_prompt: ""
+    ai_grading_prompt: "",
+    question_paper_url: ""
   });
 
   const [uploadingKey, setUploadingKey] = useState(false);
+  const [uploadingPaper, setUploadingPaper] = useState(false);
 
   const [mcqQuestions, setMcqQuestions] = useState<MCQQuestion[]>([
     { id: 1, question: "", options: ["", "", "", ""], correctAnswer: "0", marks: 1 }
@@ -144,6 +146,37 @@ const TeacherExamCreate = () => {
       toast.error("Failed to upload Answer Key");
     } finally {
       setUploadingKey(false);
+    }
+  };
+
+  const handleQuestionPaperUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast.error("Question paper must be a PDF file");
+      return;
+    }
+
+    setUploadingPaper(true);
+    const form = new FormData();
+    form.append("file", file);
+
+    try {
+      // Reusing the same upload endpoint since it handles generic PDFs to Google Drive
+      const res = await fetch(`${API_BASE}/api/upload-answer-key`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setExamData({ ...examData, question_paper_url: data.url });
+      toast.success("Question Paper uploaded successfully");
+    } catch (err) {
+      toast.error("Failed to upload Question Paper");
+    } finally {
+      setUploadingPaper(false);
     }
   };
 
@@ -340,7 +373,34 @@ const TeacherExamCreate = () => {
             </CardContent>
           </Card>
 
-          {/* Questions Section */}
+          {/* Question Paper Upload Section for PDF Exams */}
+          {examData.exam_type === "pdf" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Question Paper Upload</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Upload Question Paper PDF</label>
+                  <p className="text-xs text-muted-foreground mb-2">Since this is a Long Answer exam, students will only see this PDF to answer questions on paper.</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input 
+                      type="file" 
+                      accept="application/pdf"
+                      onChange={handleQuestionPaperUpload}
+                      disabled={uploadingPaper}
+                      className="flex-1"
+                    />
+                    {examData.question_paper_url && <CheckCircle2 className="h-5 w-5 text-success" />}
+                  </div>
+                  {uploadingPaper && <p className="text-xs text-info mt-1">Uploading Question Paper to Google Drive...</p>}
+                  {examData.question_paper_url && <p className="text-[10px] text-success truncate mt-1">Ready: {examData.question_paper_url}</p>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Questions Section (MCQ / Short) */}
           {examData.exam_type === "mcq" && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">

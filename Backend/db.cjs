@@ -251,21 +251,21 @@ const initializeDatabase = async () => {
 
       CREATE TABLE IF NOT EXISTS assignments (
         id SERIAL PRIMARY KEY,
-        course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
         teacher_user_id INT REFERENCES users(id) ON DELETE SET NULL,
         title VARCHAR(255) NOT NULL,
         description TEXT,
-        type assignment_type DEFAULT 'pdf',
-        due_date TIMESTAMP,
-        max_score INT DEFAULT 100,
-        duration_minutes INT DEFAULT 0,
-        grading_method VARCHAR(20) DEFAULT 'manual',
+        type VARCHAR(50) DEFAULT 'pdf',
+        file_url VARCHAR(500),
+        due_date TIMESTAMP NOT NULL,
+        max_score INTEGER DEFAULT 100,
+        duration_minutes INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        grading_method VARCHAR(50) DEFAULT 'manual',
         answer_key_url TEXT,
-        ai_grading_prompt TEXT
+        ai_grading_prompt TEXT,
+        question_paper_url TEXT
       );
-
-      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS teacher_user_id INT REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS duration_minutes INT DEFAULT 0;
 
       CREATE TABLE IF NOT EXISTS assignment_questions (
         id SERIAL PRIMARY KEY,
@@ -282,28 +282,30 @@ const initializeDatabase = async () => {
         student_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         submission_text TEXT,
         file_url VARCHAR(255),
-        status submission_status DEFAULT 'submitted',
+        status VARCHAR(50) DEFAULT 'submitted',
         score INT,
+        feedback TEXT,
         submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS exams (
         id SERIAL PRIMARY KEY,
-        course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
         teacher_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title VARCHAR(255) NOT NULL,
-        exam_type assignment_type NOT NULL,
-        duration_minutes INT NOT NULL,
+        exam_type VARCHAR(50) DEFAULT 'mcq',
+        duration_minutes INTEGER NOT NULL,
         exam_date DATE NOT NULL,
         start_time TIME NOT NULL,
         instructions TEXT,
-        total_marks INT DEFAULT 100,
-        grading_method VARCHAR(20) DEFAULT 'manual',
+        total_marks INTEGER DEFAULT 100,
+        grading_method VARCHAR(50) DEFAULT 'manual',
         answer_key_url TEXT,
         ai_grading_prompt TEXT,
         results_published BOOLEAN DEFAULT FALSE,
-        status exam_status DEFAULT 'draft',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        status VARCHAR(50) DEFAULT 'draft',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        question_paper_url TEXT
       );
 
       CREATE TABLE IF NOT EXISTS exam_questions (
@@ -320,8 +322,10 @@ const initializeDatabase = async () => {
         exam_id INT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
         student_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         answers JSONB NOT NULL,
-        score INT DEFAULT 0,
+        file_url VARCHAR(500),
+        score INT DEFAULT NULL,
         status submission_status DEFAULT 'submitted',
+        feedback TEXT,
         submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 

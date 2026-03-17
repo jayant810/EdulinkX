@@ -2,6 +2,24 @@
 const express = require("express");
 const router = express.Router();
 const { pool } = require("../db.cjs");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const { gradeSubmissionFile } = require("../utils/autograder.cjs");
+
+// ===== Multer Setup for Exam Uploads =====
+const uploadDir = path.join(__dirname, '../public/uploads/exams');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + "-" + file.originalname;
+    cb(null, uniqueName);
+  },
+});
+
+const upload = multer({ storage });
 
 // Middleware to verify token is already applied in server.cjs
 
@@ -282,7 +300,7 @@ router.post("/lecture/:lectureId/summary", async (req, res) => {
   }
 });
 
-// 10. Exams (Placeholder table needed if missing)
+// 10. Exams
 router.get("/exams/upcoming", async (req, res) => {
   const studentId = req.user.id;
   try {
@@ -291,11 +309,144 @@ router.get("/exams/upcoming", async (req, res) => {
       FROM exams e
       JOIN courses c ON c.id = e.course_id
       JOIN course_students cs ON cs.course_id = c.id
-      WHERE cs.student_user_id = ? AND e.exam_date >= CURRENT_DATE
-      ORDER BY e.exam_date ASC`, [studentId]);
+      LEFT JOIN exam_submissions s ON s.exam_id = e.id AND s.student_user_id = ?
+      WHERE cs.student_user_id = ? AND e.exam_date >= CURRENT_DATE AND s.id IS NULL
+      ORDER BY e.exam_date ASC`, [studentId, studentId]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/exams/past", async (req, res) => {
+  const studentId = req.user.id;
+  try {
+    const [rows] = await pool.execute(`
+      SELECT e.*, c.course_name as subject, s.score as student_score, s.feedback
+      FROM exams e
+      JOIN courses c ON c.id = e.course_id
+      JOIN course_students cs ON cs.course_id = c.id
+      JOIN exam_submissions s ON s.exam_id = e.id AND s.student_user_id = ?
+      WHERE cs.student_user_id = ?
+      ORDER BY e.exam_date DESC`, [studentId, studentId]);
+    
+    // Only send scores/feedback if results_published is true
+    const sanitizedRows = rows.map(r => {
+      if (!r.results_published) {
+        return { ...r, student_score: null, feedback: "Results pending admin approval" };
+      }
+      return r;
+    });
+
+    res.json(sanitizedRows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// 10.1 POST PDF/Image Exam Submission
+router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
+  const examId = req.params.id;
+  const studentId = req.user.id;
+
+  try {
+    if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
+
+    // Fetch exam details to check if AI grading is enabled
+    const [[exam]] = await pool.execute(
+      "SELECT grading_method, answer_key_url, ai_grading_prompt FROM exams WHERE id = ?",
+      [examId]
+    );
+
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found" });
+    }
+
+    let score = null;
+    let feedback = null;
+    let status = 'submitted';
+
+    if (exam.grading_method !== 'manual' && exam.answer_key_url) {
+      try {
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const method = exam.grading_method === 'auto_similarity' ? 'similarity' : 'gemini';
+        
+        console.log(`[Autograder] Triggering grading for exam ${examId} using ${method}`);
+        const result = await gradeSubmissionFile(
+          fileBuffer, 
+          req.file.originalname, 
+          req.file.mimetype, 
+          examId, 
+          0, 
+          method, 
+          exam.ai_grading_prompt
+        );
+
+        if (result && result.grading_result) {
+          score = result.grading_result.score;
+          feedback = result.grading_result.feedback || result.grading_result.raw;
+          status = 'graded';
+        } else if (result && result.final_marks !== undefined) {
+          score = result.final_marks;
+          feedback = `Similarity Score: ${result.similarity_score}%`;
+          status = 'graded';
+        }
+      } catch (autoErr) {
+        console.error(`[Autograder] Failed to grade exam ${examId}:`, autoErr.message);
+        feedback = `AI Grading failed: ${autoErr.message}. Pending manual review.`;
+      }
+    }
+
+    await pool.execute(
+      "INSERT INTO exam_submissions (exam_id, student_user_id, file_url, status, score, feedback) VALUES (?, ?, ?, ?, ?, ?)",
+      [examId, studentId, `/uploads/exams/${req.file.filename}`, status, score, feedback]
+    );
+
+    res.status(201).json({ success: true, status, score, feedback });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// 10.2 POST MCQ Exam Submission
+router.post("/exams/:id/submit/mcq", async (req, res) => {
+  const examId = req.params.id;
+  const studentId = req.user.id;
+  const { answers } = req.body; // { question_id: answer_text_or_option_index }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let totalScore = 0;
+    
+    // Auto-grade MCQ
+    const { rows: questions } = await client.query(
+      "SELECT id, correct_answer, marks FROM exam_questions WHERE exam_id = $1",
+      [examId]
+    );
+
+    for (const q of questions) {
+      const studentAnswer = String(answers[q.id]);
+      if (studentAnswer === String(q.correct_answer)) {
+        totalScore += (q.marks || 1);
+      }
+    }
+
+    await client.query(
+      "INSERT INTO exam_submissions (exam_id, student_user_id, status, score) VALUES ($1, $2, 'graded', $3)",
+      [examId, studentId, totalScore]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({ success: true, score: totalScore, status: 'graded' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  } finally {
+    client.release();
   }
 });
 
