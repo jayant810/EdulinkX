@@ -25,25 +25,21 @@ const StudentExams = () => {
 
   useEffect(() => {
     if (!token) return;
+    
+    // Fetch upcoming exams
     fetch(`${API_BASE}/api/student/exams/upcoming`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => setUpcomingExams(Array.isArray(data) ? data : []));
 
-    // Simulated completed exams for now
-    setCompletedExams([
-      {
-        id: 4,
-        title: "Operating Systems Quiz 1",
-        course: "CS304",
-        type: "mcq",
-        date: "Dec 5, 2024",
-        marks: "45/50",
-        percentage: 90,
-        status: "passed",
-      }
-    ]);
+    // Fetch past/completed exams
+    fetch(`${API_BASE}/api/student/exams/past`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setCompletedExams(Array.isArray(data) ? data : []))
+      .catch(err => console.error("Error fetching past exams:", err));
   }, [token]);
 
   return (
@@ -140,21 +136,38 @@ const StudentExams = () => {
                         {completedExams.map((exam) => (
                           <tr key={exam.id} className="border-b border-border last:border-0">
                             <td className="p-4 font-medium">{exam.title}</td>
-                            <td className="p-4 text-muted-foreground">{exam.course}</td>
-                            <td className="p-4 font-medium">{exam.marks}</td>
-                            <td className="p-4">
-                              <Badge variant="success">
-                                <CheckCircle2 className="h-3 w-3 mr-1" />
-                                Passed
-                              </Badge>
+                            <td className="p-4 text-muted-foreground">{exam.subject}</td>
+                            <td className="p-4 font-medium">
+                              {exam.student_score !== null 
+                                ? `${exam.student_score} / ${exam.total_marks}` 
+                                : <span className="text-muted-foreground italic text-xs">Result Awaited</span>
+                              }
                             </td>
                             <td className="p-4">
-                              <Button variant="ghost" size="sm">
-                                View
+                              {exam.student_score !== null ? (
+                                <Badge variant={parseFloat(exam.student_score) >= (exam.total_marks * 0.4) ? "success" : "destructive"}>
+                                  {parseFloat(exam.student_score) >= (exam.total_marks * 0.4) ? (
+                                    <><CheckCircle2 className="h-3 w-3 mr-1" /> Passed</>
+                                  ) : (
+                                    <><AlertCircle className="h-3 w-3 mr-1" /> Failed</>
+                                  )}
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary">Pending</Badge>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <Button variant="ghost" size="sm" asChild>
+                                <Link to={`/student/grades`}>View</Link>
                               </Button>
                             </td>
                           </tr>
                         ))}
+                        {completedExams.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="p-8 text-center text-muted-foreground">No completed exams found.</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
