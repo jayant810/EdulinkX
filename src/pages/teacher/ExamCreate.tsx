@@ -31,6 +31,7 @@ interface MCQQuestion {
 interface ShortQuestion {
   id: number;
   question: string;
+  expectedAnswer: string;
   marks: number;
 }
 
@@ -39,6 +40,7 @@ const TeacherExamCreate = () => {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [answerKeyFile, setAnswerKeyFile] = useState<File | null>(null);
 
   // Form State
   const [examData, setExamData] = useState({
@@ -56,7 +58,7 @@ const TeacherExamCreate = () => {
     { id: 1, question: "", options: ["", "", "", ""], correctAnswer: "0", marks: 1 }
   ]);
   const [shortQuestions, setShortQuestions] = useState<ShortQuestion[]>([
-    { id: 1, question: "", marks: 5 }
+    { id: 1, question: "", expectedAnswer: "", marks: 5 }
   ]);
 
   useEffect(() => {
@@ -113,7 +115,7 @@ const TeacherExamCreate = () => {
   const addShortQuestion = () => {
     setShortQuestions([
       ...shortQuestions,
-      { id: Date.now(), question: "", marks: 5 }
+      { id: Date.now(), question: "", expectedAnswer: "", marks: 5 }
     ]);
   };
 
@@ -336,6 +338,16 @@ const TeacherExamCreate = () => {
                         rows={3} 
                         value={q.question}
                         onChange={(e) => setShortQuestions(shortQuestions.map(sq => sq.id === q.id ? { ...sq, question: e.target.value } : sq))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-primary">Expected Answer (for AI auto-grading)</label>
+                      <Textarea
+                        placeholder="Enter the expected answer. The AI grader will compare student responses against this..."
+                        className="mt-1 border-primary/30 bg-primary/5"
+                        rows={3}
+                        value={q.expectedAnswer}
+                        onChange={(e) => setShortQuestions(shortQuestions.map(sq => sq.id === q.id ? { ...sq, expectedAnswer: e.target.value } : sq))}
                       />
                     </div>
                   </div>

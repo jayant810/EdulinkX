@@ -23,6 +23,8 @@ import {
   Eye,
   Clock,
   AlertCircle,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
@@ -38,6 +40,7 @@ const TeacherGrading = () => {
   const [gradeData, setGradeData] = useState({ score: "", feedback: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [aiGrading, setAiGrading] = useState<string | null>(null); // submission id being graded
 
   const fetchSubmissions = async () => {
     if (!token) return;
@@ -91,6 +94,65 @@ const TeacherGrading = () => {
       toast.error("Error submitting grade");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAIGrade = async (submission: any) => {
+    setAiGrading(submission.id);
+    try {
+      let result;
+      if (submission.submission_text) {
+        // Text-based grading (short answer)
+        const res = await fetch(`${API_BASE}/api/teacher/ai-grade/text`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            student_answer: submission.submission_text,
+            expected_answer: submission.expected_answer || submission.assignment,
+            method: "gemini",
+            question_context: submission.assignment
+          })
+        });
+        if (!res.ok) throw new Error("AI grading failed");
+        result = await res.json();
+      } else if (submission.file_url) {
+        // Image/PDF grading
+        const fileRes = await fetch(`${API_BASE}${submission.file_url}`);
+        const blob = await fileRes.blob();
+        const formData = new FormData();
+        formData.append("file", blob, "submission.jpg");
+        formData.append("exam_id", "default");
+        formData.append("question_idx", "0");
+        formData.append("method", "gemini");
+        formData.append("gemini_prompt", submission.assignment || "");
+
+        const res = await fetch(`${API_BASE}/api/teacher/ai-grade/image`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
+        if (!res.ok) throw new Error("AI grading failed");
+        result = await res.json();
+      } else {
+        toast.error("No submission content to grade");
+        return;
+      }
+
+      // Auto-fill the grading dialog
+      const score = result.grading_result?.score ?? result.final_marks ?? 0;
+      const feedback = result.grading_result?.feedback ?? `Similarity: ${result.similarity_score}%`;
+      setGradeData({ score: String(score), feedback });
+      setSelectedSubmission(submission);
+      setIsDialogOpen(true);
+      toast.success("AI grading complete! Review the results.");
+    } catch (err) {
+      console.error("AI grading error", err);
+      toast.error("AI grading failed. Try again.");
+    } finally {
+      setAiGrading(null);
     }
   };
 
@@ -159,6 +221,19 @@ const TeacherGrading = () => {
                               <Download className="h-4 w-4 mr-1" /> View PDF
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-primary/30 text-primary hover:bg-primary/10"
+                            onClick={() => handleAIGrade(submission)}
+                            disabled={aiGrading === submission.id}
+                          >
+                            {aiGrading === submission.id ? (
+                              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Grading...</>
+                            ) : (
+                              <><Sparkles className="h-4 w-4 mr-1" /> AI Grade</>
+                            )}
+                          </Button>
                           <Dialog open={isDialogOpen && selectedSubmission?.id === submission.id} onOpenChange={(open) => {
                             setIsDialogOpen(open);
                             if (open) setSelectedSubmission(submission);
