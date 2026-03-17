@@ -71,7 +71,8 @@ router.get("/dashboard/upcoming-classes", async (req, res) => {
       LIMIT 3`, [studentId]);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -99,13 +100,38 @@ router.get("/courses", async (req, res) => {
   const studentId = req.user.id;
   try {
     const [rows] = await pool.execute(`
-      SELECT c.*, 
-             (SELECT name FROM users u JOIN course_teachers ct ON ct.teacher_user_id = u.id WHERE ct.course_id = c.id LIMIT 1) as teacher_name
+      SELECT 
+        c.id, 
+        c.course_name as name, 
+        c.course_code as code, 
+        c.course_description, 
+        c.credits, 
+        c.course_timing, 
+        c.department,
+        (SELECT name FROM users u JOIN course_teachers ct ON ct.teacher_user_id = u.id WHERE ct.course_id = c.id LIMIT 1) as teacher_name,
+        (SELECT name FROM users u JOIN course_teachers ct ON ct.teacher_user_id = u.id WHERE ct.course_id = c.id LIMIT 1) as instructor,
+        (SELECT COUNT(*) FROM course_lectures cl WHERE cl.course_id = c.id) as totalLectures,
+        (SELECT COUNT(*) FROM student_lecture_progress slp 
+         JOIN course_lectures cl ON slp.lecture_id = cl.id 
+         WHERE cl.course_id = c.id AND slp.student_user_id = ? AND slp.completed = true) as completedLectures,
+        (SELECT COUNT(*) FROM course_materials cm WHERE cm.course_id = c.id) as materials
       FROM courses c
       JOIN course_students cs ON cs.course_id = c.id
-      WHERE cs.student_user_id = ?`, [studentId]);
-    res.json(rows);
+      WHERE cs.student_user_id = ?`, [studentId, studentId]);
+
+    // Add progress calculation
+    const result = rows.map(r => {
+      const total = parseInt(r.totalLectures) || 0;
+      const completed = parseInt(r.completedLectures) || 0;
+      return {
+        ...r,
+        progress: total > 0 ? (completed / total) * 100 : 0
+      };
+    });
+
+    res.json(result);
   } catch (err) {
+    console.error("[Student Courses] Error:", err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -161,7 +187,8 @@ router.get("/attendance/calendar", async (req, res) => {
     const [rows] = await pool.execute(query, params);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -216,7 +243,8 @@ router.get("/holidays", async (req, res) => {
     const { rows } = await pool.query("SELECT holiday_date, title, description, is_weekend FROM holidays ORDER BY holiday_date ASC");
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -256,7 +284,8 @@ router.post("/lecture/:lectureId/complete", async (req, res) => {
       [studentId, lectureId]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -284,7 +313,8 @@ router.post("/lecture/:lectureId/interaction", async (req, res) => {
     
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -296,7 +326,8 @@ router.post("/lecture/:lectureId/summary", async (req, res) => {
     await pool.execute("UPDATE course_lectures SET ai_summary = ? WHERE id = ?", [summary, lectureId]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -309,12 +340,13 @@ router.get("/exams/upcoming", async (req, res) => {
       FROM exams e
       JOIN courses c ON c.id = e.course_id
       JOIN course_students cs ON cs.course_id = c.id
-      LEFT JOIN exam_submissions s ON s.exam_id = e.id AND s.student_user_id = ?
+      LEFT JOIN exam_submissions s ON s.exam_id = e.id AND s.student_id = ?
       WHERE cs.student_user_id = ? AND e.exam_date >= CURRENT_DATE AND s.id IS NULL
       ORDER BY e.exam_date ASC`, [studentId, studentId]);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -326,7 +358,7 @@ router.get("/exams/past", async (req, res) => {
       FROM exams e
       JOIN courses c ON c.id = e.course_id
       JOIN course_students cs ON cs.course_id = c.id
-      JOIN exam_submissions s ON s.exam_id = e.id AND s.student_user_id = ?
+      JOIN exam_submissions s ON s.exam_id = e.id AND s.student_id = ?
       WHERE cs.student_user_id = ?
       ORDER BY e.exam_date DESC`, [studentId, studentId]);
     
@@ -340,7 +372,8 @@ router.get("/exams/past", async (req, res) => {
 
     res.json(sanitizedRows);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
@@ -398,7 +431,7 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
     }
 
     await pool.execute(
-      "INSERT INTO exam_submissions (exam_id, student_user_id, file_url, status, score, feedback) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO exam_submissions (exam_id, student_id, file_url, status, score, feedback) VALUES (?, ?, ?, ?, ?, ?)",
       [examId, studentId, `/uploads/exams/${req.file.filename}`, status, score, feedback]
     );
 
@@ -435,7 +468,7 @@ router.post("/exams/:id/submit/mcq", async (req, res) => {
     }
 
     await client.query(
-      "INSERT INTO exam_submissions (exam_id, student_user_id, status, score) VALUES ($1, $2, 'graded', $3)",
+      "INSERT INTO exam_submissions (exam_id, student_id, status, score) VALUES ($1, $2, 'graded', $3)",
       [examId, studentId, totalScore]
     );
 
@@ -461,7 +494,8 @@ router.get("/grades", async (req, res) => {
       WHERE cs.student_user_id = ?`, [studentId]);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
