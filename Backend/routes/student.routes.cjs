@@ -350,6 +350,33 @@ router.get("/exams/upcoming", async (req, res) => {
   }
 });
 
+router.get("/exams/past", async (req, res) => {
+  const studentId = req.user.id;
+  try {
+    const [rows] = await pool.execute(`
+      SELECT e.*, c.course_name as subject, s.score as student_score, s.feedback
+      FROM exams e
+      JOIN courses c ON c.id = e.course_id
+      JOIN course_students cs ON cs.course_id = c.id
+      JOIN exam_submissions s ON s.exam_id = e.id AND s.student_id = ?
+      WHERE cs.student_user_id = ?
+      ORDER BY e.exam_date DESC`, [studentId, studentId]);
+    
+    // Only send scores/feedback if results_published is true
+    const sanitizedRows = rows.map(r => {
+      if (!r.results_published) {
+        return { ...r, student_score: null, feedback: "Results pending admin approval" };
+      }
+      return r;
+    });
+
+    res.json(sanitizedRows);
+  } catch (err) {
+    console.error(`[Student Courses] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
 router.get("/exams/:id", async (req, res) => {
   const studentId = req.user.id;
   const examId = req.params.id;
@@ -375,33 +402,6 @@ router.get("/exams/:id", async (req, res) => {
     res.json({ exam, questions });
   } catch (err) {
     console.error(`[Get Exam] Error:`, err.message);
-    res.status(500).json({ error: "Server error", details: err.message });
-  }
-});
-
-router.get("/exams/past", async (req, res) => {
-  const studentId = req.user.id;
-  try {
-    const [rows] = await pool.execute(`
-      SELECT e.*, c.course_name as subject, s.score as student_score, s.feedback
-      FROM exams e
-      JOIN courses c ON c.id = e.course_id
-      JOIN course_students cs ON cs.course_id = c.id
-      JOIN exam_submissions s ON s.exam_id = e.id AND s.student_id = ?
-      WHERE cs.student_user_id = ?
-      ORDER BY e.exam_date DESC`, [studentId, studentId]);
-    
-    // Only send scores/feedback if results_published is true
-    const sanitizedRows = rows.map(r => {
-      if (!r.results_published) {
-        return { ...r, student_score: null, feedback: "Results pending admin approval" };
-      }
-      return r;
-    });
-
-    res.json(sanitizedRows);
-  } catch (err) {
-    console.error(`[Student Courses] Error:`, err.message);
     res.status(500).json({ error: "Server error", details: err.message });
   }
 });
