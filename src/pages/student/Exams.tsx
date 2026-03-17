@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/AuthProvider";
+import { Link } from "react-router-dom";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
@@ -105,8 +106,10 @@ const StudentExams = () => {
                         </div>
                         <div className="flex gap-2">
                           <Button variant="outline">Instructions</Button>
-                          <Button>
-                            <Play className="h-4 w-4 mr-1" /> Start
+                          <Button asChild>
+                            <Link to={`/student/exams/${exam.id}`}>
+                              <Play className="h-4 w-4 mr-1" /> Start
+                            </Link>
                           </Button>
                         </div>
                       </div>

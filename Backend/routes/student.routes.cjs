@@ -350,6 +350,35 @@ router.get("/exams/upcoming", async (req, res) => {
   }
 });
 
+router.get("/exams/:id", async (req, res) => {
+  const studentId = req.user.id;
+  const examId = req.params.id;
+  try {
+    // 1. Fetch exam details and verify enrollment
+    const [[exam]] = await pool.execute(`
+      SELECT e.*, c.course_name as subject
+      FROM exams e
+      JOIN courses c ON c.id = e.course_id
+      JOIN course_students cs ON cs.course_id = c.id
+      WHERE e.id = ? AND cs.student_user_id = ?`, [examId, studentId]);
+
+    if (!exam) {
+      return res.status(404).json({ error: "Exam not found or you are not enrolled" });
+    }
+
+    // 2. Fetch questions
+    const [questions] = await pool.execute(
+      "SELECT id, question_text, options, marks FROM exam_questions WHERE exam_id = ?",
+      [examId]
+    );
+
+    res.json({ exam, questions });
+  } catch (err) {
+    console.error(`[Get Exam] Error:`, err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
 router.get("/exams/past", async (req, res) => {
   const studentId = req.user.id;
   try {

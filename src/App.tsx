@@ -215,7 +215,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/student/exams/:examId/:examType"
+                path="/student/exams/:id"
                 element={
                   <ProtectedRoute allowedRoles={["student"]}>
                     <TakeExam />
