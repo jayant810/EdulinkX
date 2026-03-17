@@ -352,4 +352,309 @@ router.post("/students", async (req, res) => {
 // (Other student endpoints like delete, bulk upload etc can be added back if needed, 
 // keeping it clean for now to ensure holidays work)
 
+// --- DEPARTMENT-STUDENT MANAGEMENT ---
+
+// GET /admin/students/eligible — students not assigned to any department
+router.get("/students/eligible", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.student_id, sp.semester
+      FROM users u
+      LEFT JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE u.role = 'student'
+        AND (sp.department IS NULL OR sp.department = '')
+      ORDER BY u.name ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// GET /admin/departments/:name/students — students in a specific department
+router.get("/departments/:name/students", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.student_id, sp.semester, sp.academic_status
+      FROM users u
+      JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE u.role = 'student' AND sp.department = $1
+      ORDER BY u.name ASC
+    `, [req.params.name]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/departments/:name/add-student — assign a student to a department
+router.post("/departments/:name/add-student", async (req, res) => {
+  const { studentId } = req.body;
+  try {
+    await pool.query(
+      "UPDATE student_profiles SET department = $1 WHERE student_id = $2",
+      [req.params.name, studentId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/departments/remove-student — remove a student from their department
+router.post("/departments/remove-student", async (req, res) => {
+  const { studentId } = req.body;
+  try {
+    await pool.query(
+      "UPDATE student_profiles SET department = NULL WHERE student_id = $1",
+      [studentId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/departments/validate-bulk — validate students from an Excel file for bulk assignment
+router.post("/departments/validate-bulk", upload.single('file'), async (req, res) => {
+  try {
+    const buffer = req.file.buffer;
+    const workbook = xlsx.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    const results = [];
+    for (const row of data) {
+      const studentId = row['Student ID'] || row['student_id'] || row['StudentID'] || row['ID'] || '';
+      const excelName = row['Name'] || row['name'] || row['Student Name'] || '';
+
+      if (!studentId) continue;
+
+      // Check if student exists
+      const { rows: found } = await pool.query(`
+        SELECT u.id, u.name, u.student_id, sp.department
+        FROM users u
+        LEFT JOIN student_profiles sp ON u.id = sp.user_id
+        WHERE u.student_id = $1 AND u.role = 'student'
+      `, [String(studentId).trim()]);
+
+      if (found.length > 0) {
+        const student = found[0];
+        results.push({
+          student_id: student.student_id,
+          excel_name: excelName,
+          system_name: student.name,
+          found: true,
+          name_mismatch: excelName && student.name.toLowerCase() !== String(excelName).toLowerCase(),
+          already_assigned: !!student.department,
+          current_department: student.department || null
+        });
+      } else {
+        results.push({
+          student_id: String(studentId).trim(),
+          excel_name: excelName,
+          found: false,
+          already_assigned: false
+        });
+      }
+    }
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: "Validation failed", details: err.message });
+  }
+});
+
+// POST /admin/departments/:name/process-bulk — process bulk department assignment
+router.post("/departments/:name/process-bulk", async (req, res) => {
+  const { students } = req.body;
+  const deptName = req.params.name;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    let moved = 0;
+
+    for (const s of students) {
+      if (s.found && s.move) {
+        await client.query(
+          "UPDATE student_profiles SET department = $1 WHERE student_id = $2",
+          [deptName, s.student_id]
+        );
+        moved++;
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, moved });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: "Bulk process failed", details: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// --- COURSE PARTICIPANT MANAGEMENT ---
+
+// GET /admin/courses/:id/participants — List all students and teachers enrolled in a course
+router.get("/courses/:id/participants", async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    
+    // Get Teachers
+    const { rows: teachers } = await pool.query(`
+      SELECT u.id, u.name, u.employee_code as identifier, 'Teacher' as role
+      FROM course_teachers ct
+      JOIN users u ON ct.teacher_user_id = u.id
+      WHERE ct.course_id = $1
+    `, [courseId]);
+
+    // Get Students
+    const { rows: students } = await pool.query(`
+      SELECT u.id, u.name, u.student_id as identifier, 'Student' as role
+      FROM course_students cs
+      JOIN users u ON cs.student_user_id = u.id
+      WHERE cs.course_id = $1
+    `, [courseId]);
+
+    // Combine and sort
+    const participants = [...teachers, ...students].sort((a, b) => a.name.localeCompare(b.name));
+    res.json(participants);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// GET /admin/courses/:id/eligible — List users not yet enrolled, from the same department
+router.get("/courses/:id/eligible", async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    
+    const { rows: courseQuery } = await pool.query("SELECT department FROM courses WHERE id = $1", [courseId]);
+    if (courseQuery.length === 0) return res.status(404).json({ error: "Course not found" });
+    const department = courseQuery[0].department;
+
+    // Eligible Teachers (in department, not in this course)
+    const { rows: eligibleTeachers } = await pool.query(`
+      SELECT u.id, u.name, u.employee_code as identifier, 'Teacher' as role
+      FROM users u
+      JOIN teacher_profiles tp ON u.id = tp.user_id
+      WHERE tp.department = $1
+        AND u.id NOT IN (SELECT teacher_user_id FROM course_teachers WHERE course_id = $2)
+    `, [department, courseId]);
+
+    // Eligible Students (in department, not in this course)
+    const { rows: eligibleStudents } = await pool.query(`
+      SELECT u.id, u.name, u.student_id as identifier, 'Student' as role
+      FROM users u
+      JOIN student_profiles sp ON u.id = sp.user_id
+      WHERE sp.department = $1
+        AND u.id NOT IN (SELECT student_user_id FROM course_students WHERE course_id = $2)
+    `, [department, courseId]);
+
+    const eligible = [...eligibleTeachers, ...eligibleStudents].sort((a, b) => a.name.localeCompare(b.name));
+    res.json(eligible);
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/courses/:id/add-participant — Enroll a student or teacher
+router.post("/courses/:id/add-participant", async (req, res) => {
+  const { userId, role } = req.body;
+  const courseId = req.params.id;
+  try {
+    if (role === 'Teacher') {
+      await pool.query("INSERT INTO course_teachers (course_id, teacher_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [courseId, userId]);
+    } else {
+      await pool.query("INSERT INTO course_students (course_id, student_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [courseId, userId]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/courses/:id/remove-participant — Unenroll a student or teacher
+router.post("/courses/:id/remove-participant", async (req, res) => {
+  const { userId, role } = req.body;
+  const courseId = req.params.id;
+  try {
+    if (role === 'Teacher') {
+      await pool.query("DELETE FROM course_teachers WHERE course_id = $1 AND teacher_user_id = $2", [courseId, userId]);
+    } else {
+      await pool.query("DELETE FROM course_students WHERE course_id = $1 AND student_user_id = $2", [courseId, userId]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error", details: err.message });
+  }
+});
+
+// POST /admin/courses/bulk-enroll — Process Excel bulk enrollments
+router.post("/courses/bulk-enroll", upload.single('file'), async (req, res) => {
+  try {
+    const buffer = req.file.buffer;
+    const workbook = xlsx.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    let success = 0;
+    const warnings = [];
+
+    for (const row of data) {
+      const identifier = String(row['id'] || row['ID'] || row['Student ID'] || row['Teacher ID'] || '').trim().toUpperCase();
+      const courseCode = String(row['course_code'] || row['Course Code'] || row['Course'] || '').trim().toUpperCase();
+
+      if (!identifier || !courseCode) continue;
+
+      // Find course
+      const { rows: cRows } = await pool.query("SELECT id, department FROM courses WHERE UPPER(course_code) = $1", [courseCode]);
+      if (cRows.length === 0) {
+        warnings.push({ id: identifier, course_code: courseCode, reason: "Course not found" });
+        continue;
+      }
+      const course = cRows[0];
+
+      // Process based on identifier prefix
+      if (identifier.startsWith('STU')) {
+        const { rows: sRows } = await pool.query("SELECT u.id, sp.department FROM users u JOIN student_profiles sp ON u.id = sp.user_id WHERE u.student_id = $1", [identifier]);
+        if (sRows.length === 0) {
+          warnings.push({ id: identifier, course_code: courseCode, reason: "Student ID not found" });
+        } else if (sRows[0].department !== course.department) {
+          warnings.push({ id: identifier, course_code: courseCode, reason: `Department mismatch (Student: ${sRows[0].department}, Course: ${course.department})` });
+        } else {
+          try {
+            await pool.query("INSERT INTO course_students (course_id, student_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [course.id, sRows[0].id]);
+            success++;
+          } catch (e) {
+            warnings.push({ id: identifier, course_code: courseCode, reason: "Enrollment failed" });
+          }
+        }
+      } else if (identifier.startsWith('FAC')) {
+        const { rows: tRows } = await pool.query("SELECT u.id, tp.department FROM users u JOIN teacher_profiles tp ON u.id = tp.user_id WHERE u.employee_code = $1", [identifier]);
+        if (tRows.length === 0) {
+          warnings.push({ id: identifier, course_code: courseCode, reason: "Teacher ID not found" });
+        } else if (tRows[0].department !== course.department) {
+          warnings.push({ id: identifier, course_code: courseCode, reason: `Department mismatch (Teacher: ${tRows[0].department}, Course: ${course.department})` });
+        } else {
+          try {
+            await pool.query("INSERT INTO course_teachers (course_id, teacher_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [course.id, tRows[0].id]);
+            success++;
+          } catch (e) {
+            warnings.push({ id: identifier, course_code: courseCode, reason: "Assignment failed" });
+          }
+        }
+      } else {
+        warnings.push({ id: identifier, course_code: courseCode, reason: "Invalid ID format (must start with STU or FAC)" });
+      }
+    }
+
+    res.json({ success, warnings });
+  } catch (err) {
+    res.status(500).json({ error: "Bulk enrollment failed", details: err.message });
+  }
+});
+
 module.exports = router;

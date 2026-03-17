@@ -262,8 +262,8 @@ const AdminCourses = () => {
                               <td className="p-4 text-center font-bold text-info">{c.student_count}</td>
                               <td className="p-4 text-right">
                                 <div className="flex justify-end gap-1">
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedCourse(c); loadParticipants(c.id); setManageDialog(true); }}>
-                                    <Users className="h-4 w-4" />
+                                  <Button variant="outline" size="sm" className="h-8 px-2" onClick={() => { setSelectedCourse(c); loadParticipants(c.id); setManageDialog(true); }}>
+                                    <Users className="h-4 w-4 mr-1" /> Manage
                                   </Button>
                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedCourse(c); setEditDialog(true); }}>
                                     <Edit className="h-4 w-4 text-warning" />
