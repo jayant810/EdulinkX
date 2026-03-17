@@ -450,6 +450,10 @@ const initializeDatabase = async () => {
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS ai_grading_prompt TEXT;
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS results_published BOOLEAN DEFAULT FALSE;
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS question_paper_url TEXT;
+
+      ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS feedback TEXT;
+      ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS file_url TEXT;
+      ALTER TABLE exam_submissions ALTER COLUMN score TYPE DECIMAL;
     `);
 
     // 3. Indexes
