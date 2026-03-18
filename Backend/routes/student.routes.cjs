@@ -7,19 +7,9 @@ const path = require("path");
 const fs = require("fs");
 const { gradeSubmissionFile } = require("../utils/autograder.cjs");
 
-// ===== Multer Setup for Exam Uploads =====
-const uploadDir = path.join(__dirname, '../public/uploads/exams');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + file.originalname;
-    cb(null, uniqueName);
-  },
-});
-
-const upload = multer({ storage });
+// ===== Cloudinary Setup for Exam Uploads =====
+const { cloudinaryUpload } = require("../utils/cloudinary.cjs");
+// Use cloudinaryUpload for the PDF route below.
 
 // Middleware to verify token is already applied in server.cjs
 
@@ -407,7 +397,7 @@ router.get("/exams/:id", async (req, res) => {
 });
 
 // 10.1 POST PDF/Image Exam Submission
-router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
+router.post("/exams/:id/submit/pdf", cloudinaryUpload.single("pdf"), async (req, res) => {
   const examId = req.params.id;
   const studentId = req.user.id;
 
@@ -473,14 +463,20 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
         }
 
         // --- Grade the student's submission ---
-        const fileBuffer = fs.readFileSync(req.file.path);
+        // Fetch the file from Cloudinary to send to Autograder
+        const studentPdfUrl = req.file.path;
+        console.log(`[Autograder] Downloading student PDF from Cloudinary: ${studentPdfUrl}`);
+        const stResponse = await fetch(studentPdfUrl);
+        const stArrayBuf = await stResponse.arrayBuffer();
+        const fileBuffer = Buffer.from(stArrayBuf);
+
         const method = exam.grading_method === 'auto_similarity' ? 'similarity' : 'gemini';
         
         console.log(`[Autograder] Triggering grading for exam ${examId} using ${method}`);
         const result = await gradeSubmissionFile(
           fileBuffer, 
           req.file.originalname, 
-          req.file.mimetype, 
+          req.file.mimetype || "application/pdf", 
           examId, 
           0, 
           method, 
@@ -504,7 +500,7 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
 
     await client.query(
       "INSERT INTO exam_submissions (exam_id, student_id, file_url, status, score, feedback) VALUES ($1, $2, $3, $4, $5, $6)",
-      [examId, studentId, `/uploads/exams/${req.file.filename}`, status, score, feedback]
+      [examId, studentId, req.file.path, status, score, feedback]
     );
 
     await client.query('COMMIT');

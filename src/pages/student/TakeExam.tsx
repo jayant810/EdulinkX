@@ -344,18 +344,32 @@ const TakeExam = () => {
 
                 <div className="space-y-4 border-t pt-6">
                   <h3 className="font-bold">Upload Your Answer Sheet</h3>
-                  <div className="flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-2xl bg-muted/10 hover:bg-muted/20 transition-colors cursor-pointer relative">
-                    <Input 
+                  <div 
+                    className={`flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-2xl transition-colors cursor-pointer relative ${pdfFile ? 'bg-primary/5 border-primary/40' : 'bg-muted/10 hover:bg-muted/20'}`}
+                    onClick={() => document.getElementById('pdf-file-input')?.click()}
+                  >
+                    <input 
+                      id="pdf-file-input"
                       type="file" 
                       accept="application/pdf"
-                      onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setPdfFile(file);
+                        if (file) toast.success(`File selected: ${file.name}`);
+                      }}
+                      className="hidden"
                     />
-                    <Upload className="h-10 w-10 text-muted-foreground mb-2" />
-                    <p className="font-medium text-center">
-                      {pdfFile ? pdfFile.name : "Drag and drop or click to upload PDF"}
+                    {pdfFile ? (
+                      <CheckCircle2 className="h-10 w-10 text-primary mb-2" />
+                    ) : (
+                      <Upload className="h-10 w-10 text-muted-foreground mb-2" />
+                    )}
+                    <p className={`font-medium text-center ${pdfFile ? 'text-primary' : ''}`}>
+                      {pdfFile ? `✓ ${pdfFile.name}` : "Click to upload your answer sheet PDF"}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">Maximum size: 10MB (PDF Only)</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB` : 'Maximum size: 10MB (PDF Only)'}
+                    </p>
                   </div>
                 </div>
 
@@ -475,13 +489,22 @@ const TakeExam = () => {
             <AlertDialogHeader>
               <AlertDialogTitle>Ready to submit?</AlertDialogTitle>
               <AlertDialogDescription>
-                You have answered {answeredCount} out of {questions.length} questions.
-                {answeredCount < questions.length && (
-                  <span className="block mt-2 text-warning font-medium">
-                    ⚠️ You still have {questions.length - answeredCount} unanswered question(s).
-                  </span>
+                {exam?.exam_type === 'pdf' ? (
+                  <>
+                    Your answer sheet <strong>{pdfFile?.name}</strong> is ready to submit.
+                    <span className="block mt-2 text-xs text-muted-foreground">Once submitted, you cannot change your answers.</span>
+                  </>
+                ) : (
+                  <>
+                    You have answered {answeredCount} out of {questions.length} questions.
+                    {answeredCount < questions.length && (
+                      <span className="block mt-2 text-warning font-medium">
+                        ⚠️ You still have {questions.length - answeredCount} unanswered question(s).
+                      </span>
+                    )}
+                    Once submitted, you cannot change your answers.
+                  </>
                 )}
-                Once submitted, you cannot change your answers.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
