@@ -434,6 +434,45 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
 
     if (exam.grading_method !== 'manual' && exam.answer_key_url) {
       try {
+        // --- Ensure Answer Key is in the Autograder ---
+        // The answer key URL is typically a Cloudinary URL, so we need to
+        // download it and forward it to the Autograder's /upload-answer-key endpoint.
+        const { parseAnswerKeyUpload } = require("../utils/autograder.cjs");
+        
+        let answerKeyBuffer = null;
+        const akUrl = exam.answer_key_url;
+        
+        if (akUrl.startsWith('http://') || akUrl.startsWith('https://')) {
+          // Download from remote URL (Cloudinary)
+          console.log(`[Autograder] Downloading answer key from: ${akUrl}`);
+          const akResponse = await fetch(akUrl);
+          if (akResponse.ok) {
+            const arrayBuf = await akResponse.arrayBuffer();
+            answerKeyBuffer = Buffer.from(arrayBuf);
+          } else {
+            console.error(`[Autograder] Failed to download answer key: ${akResponse.status}`);
+          }
+        } else {
+          // Try local path
+          const localPath = path.join(__dirname, '../public', akUrl);
+          if (fs.existsSync(localPath)) {
+            answerKeyBuffer = fs.readFileSync(localPath);
+          }
+        }
+
+        if (answerKeyBuffer) {
+          console.log(`[Autograder] Forwarding answer key to Autograder for exam ${examId} (${answerKeyBuffer.length} bytes)`);
+          try {
+            await parseAnswerKeyUpload(answerKeyBuffer, 'answer_key.pdf', examId);
+            console.log(`[Autograder] Answer key forwarded successfully`);
+          } catch (akErr) {
+            console.error(`[Autograder] Failed to forward answer key:`, akErr.message);
+          }
+        } else {
+          console.error(`[Autograder] Could not obtain answer key file from: ${akUrl}`);
+        }
+
+        // --- Grade the student's submission ---
         const fileBuffer = fs.readFileSync(req.file.path);
         const method = exam.grading_method === 'auto_similarity' ? 'similarity' : 'gemini';
         

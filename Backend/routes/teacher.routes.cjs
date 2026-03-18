@@ -444,11 +444,31 @@ router.post("/exams", async (req, res) => {
     }
     if (grading_method !== 'manual' && answer_key_url) {
       try {
-        const localPath = path.join(__dirname, '../public', answer_key_url);
-        if (fs.existsSync(localPath)) {
-          console.log(`[Autograder] Forwarding Answer Key to Autograder for Exam ${examId}`);
-          const fileBuffer = fs.readFileSync(localPath);
-          await parseAnswerKeyUpload(fileBuffer, path.basename(answer_key_url), examId);
+        let fileBuffer = null;
+        
+        if (answer_key_url.startsWith('http://') || answer_key_url.startsWith('https://')) {
+          // Download from remote URL (Cloudinary)
+          console.log(`[Autograder] Downloading answer key from Cloudinary: ${answer_key_url}`);
+          const akResponse = await fetch(answer_key_url);
+          if (akResponse.ok) {
+            const arrayBuf = await akResponse.arrayBuffer();
+            fileBuffer = Buffer.from(arrayBuf);
+          } else {
+            console.error(`[Autograder] Failed to download answer key: ${akResponse.status}`);
+          }
+        } else {
+          // Try local path
+          const localPath = path.join(__dirname, '../public', answer_key_url);
+          if (fs.existsSync(localPath)) {
+            fileBuffer = fs.readFileSync(localPath);
+          }
+        }
+
+        if (fileBuffer) {
+          console.log(`[Autograder] Forwarding Answer Key to Autograder for Exam ${examId} (${fileBuffer.length} bytes)`);
+          await parseAnswerKeyUpload(fileBuffer, path.basename(answer_key_url) || 'answer_key.pdf', examId);
+        } else {
+          console.error(`[Autograder] Could not obtain answer key from: ${answer_key_url}`);
         }
       } catch (err) {
         console.error("[Autograder] Failed to forward Answer Key:", err.message);
