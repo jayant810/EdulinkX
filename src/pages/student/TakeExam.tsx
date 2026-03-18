@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -167,7 +167,7 @@ const TakeExam = () => {
     return v !== undefined && v !== null && v !== "";
   }).length;
 
-  const handleSubmitClick = useCallback(() => {
+  const handleSubmitClick = () => {
     // Check if nothing has been answered
     if (answeredCount === 0 && exam?.exam_type !== 'pdf') {
       setShowEmptyWarning(true);
@@ -178,7 +178,7 @@ const TakeExam = () => {
       return;
     }
     setShowConfirm(true);
-  }, [answeredCount, exam, pdfFile]);
+  };
 
   const submitExam = async () => {
     if (isSubmitting) return;

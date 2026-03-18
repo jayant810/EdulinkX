@@ -554,11 +554,15 @@ router.post("/exams/:id/submit/short", async (req, res) => {
       let qScore = 0;
       let qFeedback = "";
 
+      console.log(`[Short Grade] Q${q.id}: student="${studentAnswer.substring(0, 100)}" expected="${(expectedAnswer || '').substring(0, 100)}" marks=${q.marks}`);
+
       if (studentAnswer.trim()) {
         try {
           // Default to gemini if not manual
           const method = exam.grading_method === 'manual' ? 'gemini' : (exam.grading_method === 'auto_similarity' ? 'similarity' : 'gemini');
           
+          console.log(`[Short Grade] Using method: ${method} (grading_method=${exam.grading_method})`);
+
           const result = await gradeSubmissionText(
             studentAnswer, 
             expectedAnswer, 
@@ -566,18 +570,26 @@ router.post("/exams/:id/submit/short", async (req, res) => {
             q.question_text
           );
 
+          console.log(`[Short Grade] Autograder response:`, JSON.stringify(result).substring(0, 500));
+
           if (result && result.grading_result) {
             // score is 0-100, scale to question marks
             qScore = (result.grading_result.score / 100) * (q.marks || 1);
             qFeedback = result.grading_result.feedback;
+            console.log(`[Short Grade] Gemini score=${result.grading_result.score}/100, scaled=${qScore}/${q.marks}`);
           } else if (result && result.similarity_score !== undefined) {
             qScore = result.passed ? (q.marks || 1) : 0;
             qFeedback = `Similarity: ${result.similarity_score}%`;
+            console.log(`[Short Grade] Similarity score=${result.similarity_score}%, passed=${result.passed}, qScore=${qScore}`);
+          } else {
+            console.log(`[Short Grade] Unexpected result format:`, JSON.stringify(result).substring(0, 300));
           }
         } catch (gradErr) {
           console.error(`[AI Grade Error] Question ${q.id}:`, gradErr.message);
           qFeedback = "AI Grading failed. Pending manual review.";
         }
+      } else {
+        console.log(`[Short Grade] Q${q.id}: Empty answer, score=0`);
       }
 
       totalScore += qScore;
