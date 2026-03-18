@@ -39,7 +39,7 @@ async function callAutograder(endpoint, options = {}) {
  * @param {string} prompt - Optional context prompt
  * @returns {Promise<Object>} The grading result (score, feedback)
  */
-async function gradeSubmissionFile(fileBuffer, fileName, mimeType, examId, questionIdx = 0, method = "gemini", prompt = null) {
+async function gradeSubmissionFile(fileBuffer, fileName, mimeType, examId, questionIdx = 0, method = "gemini", prompt = null, answerKeyUrl = null) {
   const formData = new FormData();
   formData.append("file", new Blob([fileBuffer], { type: mimeType }), fileName);
   formData.append("exam_id", String(examId));
@@ -48,6 +48,9 @@ async function gradeSubmissionFile(fileBuffer, fileName, mimeType, examId, quest
   
   if (prompt) {
     formData.append("gemini_prompt", prompt);
+  }
+  if (answerKeyUrl) {
+    formData.append("answer_key_url", answerKeyUrl);
   }
 
   return callAutograder("/grade-image", {
