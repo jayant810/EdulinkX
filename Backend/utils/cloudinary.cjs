@@ -17,10 +17,18 @@ const storage = new CloudinaryStorage({
     if (req.path.includes('assignment')) folder = 'edulinkx/assignments';
     if (req.path.includes('answer-key')) folder = 'edulinkx/answer-keys';
 
+    let resource_type = 'auto';
+    let public_id = `${Date.now()}-${file.originalname.split('.')[0]}`;
+
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      resource_type = 'raw';
+      public_id = `${public_id}.pdf`;
+    }
+
     return {
       folder: folder,
-      resource_type: 'auto', // Important for PDFs/Videos
-      public_id: `${Date.now()}-${file.originalname.split('.')[0]}`,
+      resource_type: resource_type,
+      public_id: public_id,
     };
   },
 });
@@ -32,9 +40,11 @@ const cloudinaryUpload = multer({ storage: storage });
  */
 async function uploadToCloudinary(filePath, folder = 'edulinkx/general') {
   try {
+    const isPdf = filePath.toLowerCase().endsWith('.pdf');
     const result = await cloudinary.uploader.upload(filePath, {
       folder: folder,
-      resource_type: 'auto'
+      resource_type: isPdf ? 'raw' : 'auto',
+      public_id: isPdf ? `${Date.now()}-${filePath.split('/').pop().split('\\').pop()}` : undefined
     });
     return {
       url: result.secure_url,
