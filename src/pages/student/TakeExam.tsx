@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -19,7 +19,9 @@ import {
   Send,
   FileText,
   Upload,
-  Info
+  Info,
+  LogOut,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { 
@@ -35,6 +37,39 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
+// --- localStorage helpers ---
+const STORAGE_PREFIX = "exam_progress_";
+
+function getStorageKey(examId: string) {
+  return `${STORAGE_PREFIX}${examId}`;
+}
+
+function saveProgress(examId: string, answers: Record<string, any>, timeLeft: number | null) {
+  try {
+    localStorage.setItem(getStorageKey(examId), JSON.stringify({ answers, timeLeft, savedAt: Date.now() }));
+  } catch (e) {
+    // Storage full or unavailable — silently ignore
+  }
+}
+
+function loadProgress(examId: string): { answers: Record<string, any>; timeLeft: number | null } | null {
+  try {
+    const raw = localStorage.getItem(getStorageKey(examId));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearProgress(examId: string) {
+  try {
+    localStorage.removeItem(getStorageKey(examId));
+  } catch {
+    // ignore
+  }
+}
+
 const TakeExam = () => {
   const { id } = useParams();
   const { token } = useAuth();
@@ -48,6 +83,8 @@ const TakeExam = () => {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showEmptyWarning, setShowEmptyWarning] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -69,9 +106,21 @@ const TakeExam = () => {
       setExam(data.exam);
       setQuestions(data.questions || []);
       
-      // Initialize timer
-      const duration = data.exam.duration_minutes * 60;
-      setTimeLeft(duration);
+      // Try to restore progress from localStorage
+      const saved = id ? loadProgress(id) : null;
+      if (saved && saved.answers && Object.keys(saved.answers).length > 0) {
+        setAnswers(saved.answers);
+        // Use saved timer if it's less than the full duration (i.e., student had already started)
+        const fullDuration = data.exam.duration_minutes * 60;
+        if (saved.timeLeft !== null && saved.timeLeft > 0 && saved.timeLeft < fullDuration) {
+          setTimeLeft(saved.timeLeft);
+          toast.info("Your previous progress has been restored.");
+        } else {
+          setTimeLeft(fullDuration);
+        }
+      } else {
+        setTimeLeft(data.exam.duration_minutes * 60);
+      }
       
       setLoading(false);
     } catch (err) {
@@ -80,6 +129,7 @@ const TakeExam = () => {
     }
   };
 
+  // Timer countdown
   useEffect(() => {
     if (timeLeft !== null && timeLeft > 0) {
       timerRef.current = setInterval(() => {
@@ -94,6 +144,13 @@ const TakeExam = () => {
     };
   }, [timeLeft]);
 
+  // Auto-save to localStorage whenever answers or timeLeft change
+  useEffect(() => {
+    if (id && exam) {
+      saveProgress(id, answers, timeLeft);
+    }
+  }, [answers, timeLeft, id, exam]);
+
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -104,6 +161,24 @@ const TakeExam = () => {
   const handleAnswerChange = (questionId: string, value: any) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
+
+  const answeredCount = Object.keys(answers).filter(k => {
+    const v = answers[k];
+    return v !== undefined && v !== null && v !== "";
+  }).length;
+
+  const handleSubmitClick = useCallback(() => {
+    // Check if nothing has been answered
+    if (answeredCount === 0 && exam?.exam_type !== 'pdf') {
+      setShowEmptyWarning(true);
+      return;
+    }
+    if (exam?.exam_type === 'pdf' && !pdfFile) {
+      setShowEmptyWarning(true);
+      return;
+    }
+    setShowConfirm(true);
+  }, [answeredCount, exam, pdfFile]);
 
   const submitExam = async () => {
     if (isSubmitting) return;
@@ -142,6 +217,9 @@ const TakeExam = () => {
       const result = await res.json();
       toast.success("Exam submitted successfully!");
       
+      // Clear saved progress on successful submission
+      if (id) clearProgress(id);
+      
       // If MCQ, we might have immediate results
       if (exam.exam_type === 'mcq' && result.score !== undefined) {
         toast.info(`Your Score: ${result.score}`);
@@ -156,9 +234,16 @@ const TakeExam = () => {
     }
   };
 
+  const handleExitTest = () => {
+    // Progress is already auto-saved via localStorage
+    if (id) saveProgress(id, answers, timeLeft);
+    toast.info("Your progress has been saved. You can resume before the exam time expires.");
+    navigate("/student/exams");
+  };
+
   if (loading) return <DashboardLayout title="Loading..."><div className="flex justify-center p-20"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div></DashboardLayout>;
 
-  const progress = (Object.keys(answers).length / questions.length) * 100;
+  const progress = questions.length > 0 ? (answeredCount / questions.length) * 100 : 0;
   const currentQ = questions[currentIdx];
 
   return (
@@ -167,11 +252,34 @@ const TakeExam = () => {
         title={exam.title}
         subtitle={`${exam.subject} | ${exam.exam_type.toUpperCase()}`}
         headerActions={
-          <div className="flex items-center gap-4 bg-muted/50 px-4 py-2 rounded-lg border">
-            <Timer className={`h-5 w-5 ${timeLeft && timeLeft < 300 ? 'text-destructive animate-pulse' : 'text-primary'}`} />
-            <span className={`font-mono font-bold text-lg ${timeLeft && timeLeft < 300 ? 'text-destructive' : ''}`}>
-              {timeLeft !== null ? formatTime(timeLeft) : "--:--"}
-            </span>
+          <div className="flex items-center gap-3">
+            {/* Exit Test Button */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              onClick={() => setShowExitConfirm(true)}
+            >
+              <LogOut className="h-4 w-4 mr-1.5" /> Exit Test
+            </Button>
+
+            {/* Timer */}
+            <div className="flex items-center gap-2 bg-muted/50 px-4 py-2 rounded-lg border">
+              <Timer className={`h-5 w-5 ${timeLeft && timeLeft < 300 ? 'text-destructive animate-pulse' : 'text-primary'}`} />
+              <span className={`font-mono font-bold text-lg ${timeLeft && timeLeft < 300 ? 'text-destructive' : ''}`}>
+                {timeLeft !== null ? formatTime(timeLeft) : "--:--"}
+              </span>
+            </div>
+
+            {/* Submit Exam Button (always visible) */}
+            <Button 
+              variant="hero" 
+              size="sm"
+              onClick={handleSubmitClick}
+              disabled={isSubmitting}
+            >
+              <Send className="h-4 w-4 mr-1.5" /> Submit Exam
+            </Button>
           </div>
         }
       >
@@ -250,6 +358,16 @@ const TakeExam = () => {
                     <p className="text-xs text-muted-foreground mt-1">Maximum size: 10MB (PDF Only)</p>
                   </div>
                 </div>
+
+                {/* Submit button for PDF mode */}
+                <Button 
+                  variant="hero" 
+                  className="w-full" 
+                  onClick={handleSubmitClick} 
+                  disabled={isSubmitting}
+                >
+                  <Send className="h-4 w-4 mr-2" /> {isSubmitting ? "Submitting..." : "Submit Answer Sheet"}
+                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -312,7 +430,7 @@ const TakeExam = () => {
                   </div>
 
                   {currentIdx === questions.length - 1 ? (
-                    <Button variant="hero" onClick={() => setShowConfirm(true)}>
+                    <Button variant="hero" onClick={handleSubmitClick}>
                       <Send className="h-4 w-4 mr-2" /> Finish Exam
                     </Button>
                   ) : (
@@ -347,17 +465,22 @@ const TakeExam = () => {
 
           <div className="flex items-center gap-3 p-4 bg-info/5 rounded-xl border border-info/20 text-info">
             <Info className="h-5 w-5 shrink-0" />
-            <p className="text-xs">Your progress is being saved locally. In case of disconnection, refresh the page to continue. DO NOT close this tab until you have submitted the exam.</p>
+            <p className="text-xs">Your progress is automatically saved locally. If you lose connection or accidentally close the tab, your answers will be restored when you return (as long as the exam time hasn't expired).</p>
           </div>
         </div>
 
-        {/* Confirmation Dialog */}
+        {/* Confirmation Dialog - Submit */}
         <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Ready to submit?</AlertDialogTitle>
               <AlertDialogDescription>
-                You have answered {Object.keys(answers).length} out of {questions.length} questions.
+                You have answered {answeredCount} out of {questions.length} questions.
+                {answeredCount < questions.length && (
+                  <span className="block mt-2 text-warning font-medium">
+                    ⚠️ You still have {questions.length - answeredCount} unanswered question(s).
+                  </span>
+                )}
                 Once submitted, you cannot change your answers.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -365,6 +488,59 @@ const TakeExam = () => {
               <AlertDialogCancel>Review Answers</AlertDialogCancel>
               <AlertDialogAction onClick={submitExam} disabled={isSubmitting} className="bg-primary">
                 {isSubmitting ? "Submitting..." : "Yes, Submit Exam"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Empty Submission Warning Dialog */}
+        <AlertDialog open={showEmptyWarning} onOpenChange={setShowEmptyWarning}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-destructive/10 p-2 rounded-full">
+                  <AlertTriangle className="h-6 w-6 text-destructive" />
+                </div>
+                <AlertDialogTitle>Nothing Submitted!</AlertDialogTitle>
+              </div>
+              <AlertDialogDescription>
+                {exam?.exam_type === 'pdf' 
+                  ? "You haven't uploaded your answer sheet PDF yet. Please upload your answers before submitting."
+                  : "You haven't answered any questions yet. Please answer at least one question before submitting, or review your answers."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction onClick={() => setShowEmptyWarning(false)}>
+                Go Back & Answer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Exit Test Confirmation Dialog */}
+        <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-warning/10 p-2 rounded-full">
+                  <LogOut className="h-6 w-6 text-warning" />
+                </div>
+                <AlertDialogTitle>Exit Test?</AlertDialogTitle>
+              </div>
+              <AlertDialogDescription>
+                Your answers will be saved locally. You can return and continue the exam as long as the exam time hasn't expired.
+                <span className="block mt-2 font-medium text-foreground">
+                  ⏱️ Time remaining: {timeLeft !== null ? formatTime(timeLeft) : "--:--"}
+                </span>
+                <span className="block mt-1 text-xs">
+                  Answered: {answeredCount} / {questions.length} questions
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Continue Exam</AlertDialogCancel>
+              <AlertDialogAction onClick={handleExitTest} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Exit & Save Progress
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -411,7 +411,10 @@ router.post("/exams/:id/submit/pdf", upload.single("pdf"), async (req, res) => {
   const examId = req.params.id;
   const studentId = req.user.id;
 
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
 
     // Fetch exam details to check if AI grading is enabled
@@ -502,8 +505,8 @@ router.post("/exams/:id/submit/mcq", async (req, res) => {
     }
 
     await client.query(
-      "INSERT INTO exam_submissions (exam_id, student_id, status, score) VALUES ($1, $2, 'graded', $3)",
-      [examId, studentId, totalScore]
+      "INSERT INTO exam_submissions (exam_id, student_id, status, score, answers) VALUES ($1, $2, 'graded', $3, $4)",
+      [examId, studentId, totalScore, JSON.stringify(answers)]
     );
 
     await client.query('COMMIT');

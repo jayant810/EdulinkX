@@ -321,7 +321,7 @@ const initializeDatabase = async () => {
         id SERIAL PRIMARY KEY,
         exam_id INT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
         student_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        answers JSONB NOT NULL,
+        answers JSONB DEFAULT '{}',
         file_url VARCHAR(500),
         score INT DEFAULT NULL,
         status submission_status DEFAULT 'submitted',
@@ -454,6 +454,8 @@ const initializeDatabase = async () => {
       ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS feedback TEXT;
       ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS file_url TEXT;
       ALTER TABLE exam_submissions ALTER COLUMN score TYPE DECIMAL;
+      ALTER TABLE exam_submissions ALTER COLUMN answers DROP NOT NULL;
+      ALTER TABLE exam_submissions ALTER COLUMN answers SET DEFAULT '{}';
     `);
 
     // 3. Indexes
