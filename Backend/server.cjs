@@ -84,32 +84,23 @@ app.use("/api/auth", authRoutes);
 // Static folder for uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
-const multer = require('multer');
-const uploadDir = path.join(__dirname, 'public/uploads');
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-const upload = multer({ storage });
+// ===== Handle Generic File Uploads to Cloudinary =====
+const { cloudinaryUpload, getSignedCloudinaryUrl } = require("./utils/cloudinary.cjs");
 
-// Protected API Routes
-app.post('/api/upload', verifyToken, upload.single('file'), (req, res) => {
+app.post('/api/upload', verifyToken, cloudinaryUpload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.json({ url: fileUrl });
+  
+  const signedUrl = getSignedCloudinaryUrl(req.file);
+  res.json({ url: signedUrl });
 });
 
 // Dedicated Answer Key Upload (Auto-uploads to Cloudinary)
-const { cloudinaryUpload } = require("./utils/cloudinary.cjs");
 app.post('/api/upload-answer-key', verifyToken, cloudinaryUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
-  // With CloudinaryStorage, req.file.path is already the Cloudinary URL
-  console.log(`[Cloudinary] Answer Key uploaded successfully: ${req.file.path}`);
-  res.json({ url: req.file.path });
+  const signedUrl = getSignedCloudinaryUrl(req.file);
+  console.log(`[Cloudinary] Answer Key uploaded successfully: ${signedUrl}`);
+  res.json({ url: signedUrl });
 });
 
 app.use("/api", verifyToken, assignmentRoutes);

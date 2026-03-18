@@ -46,8 +46,16 @@ async function uploadToCloudinary(filePath, folder = 'edulinkx/general') {
       resource_type: isPdf ? 'raw' : 'auto',
       public_id: isPdf ? `${Date.now()}-${filePath.split('/').pop().split('\\').pop()}` : undefined
     });
+    
+    // Explicitly generate a signed URL to bypass Cloudinary's strict "Do not allow PDF delivery" security
+    const signedUrl = cloudinary.url(result.public_id, { 
+      secure: true, 
+      resource_type: isPdf ? 'raw' : 'image', 
+      sign_url: true 
+    });
+
     return {
-      url: result.secure_url,
+      url: signedUrl,
       id: result.public_id
     };
   } catch (err) {
@@ -56,4 +64,16 @@ async function uploadToCloudinary(filePath, folder = 'edulinkx/general') {
   }
 }
 
-module.exports = { cloudinary, cloudinaryUpload, uploadToCloudinary };
+/**
+ * Generates a signed URL manually from a Cloudinary file response
+ */
+function getSignedCloudinaryUrl(file) {
+  const isRaw = file.path && file.path.includes('/raw/');
+  return cloudinary.url(file.filename, {
+    secure: true,
+    resource_type: isRaw ? 'raw' : 'image',
+    sign_url: true
+  });
+}
+
+module.exports = { cloudinary, cloudinaryUpload, uploadToCloudinary, getSignedCloudinaryUrl };

@@ -8,7 +8,7 @@ const fs = require("fs");
 const { gradeSubmissionFile } = require("../utils/autograder.cjs");
 
 // ===== Cloudinary Setup for Exam Uploads =====
-const { cloudinaryUpload } = require("../utils/cloudinary.cjs");
+const { cloudinaryUpload, getSignedCloudinaryUrl } = require("../utils/cloudinary.cjs");
 // Use cloudinaryUpload for the PDF route below.
 
 // Middleware to verify token is already applied in server.cjs
@@ -426,7 +426,7 @@ router.post("/exams/:id/submit/pdf", cloudinaryUpload.single("pdf"), async (req,
       try {
         // --- Grade the student's submission ---
         // Fetch the file from Cloudinary to send to Autograder (for the student's submission)
-        const studentPdfUrl = req.file.path;
+        const studentPdfUrl = getSignedCloudinaryUrl(req.file);
         console.log(`[Autograder] Downloading student PDF from Cloudinary: ${studentPdfUrl}`);
         const stResponse = await fetch(studentPdfUrl);
         const stArrayBuf = await stResponse.arrayBuffer();
@@ -461,9 +461,12 @@ router.post("/exams/:id/submit/pdf", cloudinaryUpload.single("pdf"), async (req,
       }
     }
 
+    // Capture URL whether graded or not
+    const finalStoredUrl = req.file ? getSignedCloudinaryUrl(req.file) : null;
+
     await client.query(
       "INSERT INTO exam_submissions (exam_id, student_id, file_url, status, score, feedback) VALUES ($1, $2, $3, $4, $5, $6)",
-      [examId, studentId, req.file.path, status, score, feedback]
+      [examId, studentId, finalStoredUrl, status, score, feedback]
     );
 
     await client.query('COMMIT');
