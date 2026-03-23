@@ -164,13 +164,19 @@ export default function BotRoom() {
     };
 
     const flushAndUpload = async () => {
+      console.log("[BotRoom] flushAndUpload Triggered! isUploading:", isUploading);
       if (isUploading) return;
       isUploading = true;
-      if (mediaRecorder && mediaRecorder.state !== "inactive") {
-        mediaRecorder.stop();
+      try {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+          console.log("[BotRoom] mediaRecorder successfully stopped.");
+        }
+      } catch (err) {
+        console.error("[BotRoom] Error stopping mediaRecorder:", err);
       }
       
-      console.log("[BotRoom] Finalizing recording file...");
+      console.log("[BotRoom] Finalizing recording file. Waiting for blob chunks...");
       setTimeout(async () => {
         if (chunks.length === 0) {
            console.log("BOT_FINISHED_RECORDING");
