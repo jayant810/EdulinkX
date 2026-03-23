@@ -827,23 +827,23 @@ router.get("/submissions/pending", async (req, res) => {
   const teacherId = req.user.id;
   try {
     const [rows] = await pool.execute(`
-      SELECT s.id, s.assignment_id as source_id, s.student_user_id, s.submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at, 
+      SELECT s.id, s.assignment_id as source_id, s.student_user_id, s.submission_text, s.file_url, CAST(s.status AS VARCHAR) as status, CAST(s.score AS DECIMAL) as score, s.feedback, s.submitted_at, 
              u.name as student, a.title as assignment, c.course_name as course, a.type, a.max_score, 'assignment' as submit_type
       FROM assignment_submissions s
       JOIN assignments a ON a.id = s.assignment_id
       JOIN users u ON u.id = s.student_user_id
       JOIN courses c ON c.id = a.course_id
       JOIN course_teachers ct ON ct.course_id = c.id
-      WHERE ct.teacher_user_id = ? AND s.status = 'submitted'
+      WHERE ct.teacher_user_id = ? AND CAST(s.status AS VARCHAR) = 'submitted'
       UNION ALL
-      SELECT s.id, s.exam_id as source_id, s.student_id as student_user_id, s.answers::text as submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at,
+      SELECT s.id, s.exam_id as source_id, s.student_id as student_user_id, CAST(s.answers AS TEXT) as submission_text, s.file_url, CAST(s.status AS VARCHAR) as status, CAST(s.score AS DECIMAL) as score, s.feedback, s.submitted_at,
              u.name as student, e.title as assignment, c.course_name as course, e.exam_type as type, e.total_marks as max_score, 'exam' as submit_type
       FROM exam_submissions s
       JOIN exams e ON e.id = s.exam_id
       JOIN users u ON u.id = s.student_id
       JOIN courses c ON c.id = e.course_id
       JOIN course_teachers ct ON ct.course_id = c.id
-      WHERE ct.teacher_user_id = ? AND s.status = 'submitted'
+      WHERE ct.teacher_user_id = ? AND CAST(s.status AS VARCHAR) = 'submitted'
       ORDER BY submitted_at ASC`, [teacherId, teacherId]);
     res.json(rows);
   } catch (err) {
@@ -855,7 +855,7 @@ router.get("/submissions/graded", async (req, res) => {
   const teacherId = req.user.id;
   try {
     const [rows] = await pool.execute(`
-      SELECT s.id, s.assignment_id as source_id, s.student_user_id, s.submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at,
+      SELECT s.id, s.assignment_id as source_id, s.student_user_id, s.submission_text, s.file_url, CAST(s.status AS VARCHAR) as status, CAST(s.score AS DECIMAL) as score, s.feedback, s.submitted_at,
              u.name as student, a.title as assignment, c.course_name as course, a.type, a.max_score, 'assignment' as submit_type, sp.student_id as student_identifier
       FROM assignment_submissions s
       JOIN assignments a ON a.id = s.assignment_id
@@ -863,9 +863,9 @@ router.get("/submissions/graded", async (req, res) => {
       JOIN courses c ON c.id = a.course_id
       JOIN course_teachers ct ON ct.course_id = c.id
       LEFT JOIN student_profiles sp ON sp.user_id = u.id
-      WHERE ct.teacher_user_id = ? AND s.status = 'graded'
+      WHERE ct.teacher_user_id = ? AND CAST(s.status AS VARCHAR) = 'graded'
       UNION ALL
-      SELECT s.id, s.exam_id as source_id, s.student_id as student_user_id, s.answers::text as submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at,
+      SELECT s.id, s.exam_id as source_id, s.student_id as student_user_id, CAST(s.answers AS TEXT) as submission_text, s.file_url, CAST(s.status AS VARCHAR) as status, CAST(s.score AS DECIMAL) as score, s.feedback, s.submitted_at,
              u.name as student, e.title as assignment, c.course_name as course, e.exam_type as type, e.total_marks as max_score, 'exam' as submit_type, sp.student_id as student_identifier
       FROM exam_submissions s
       JOIN exams e ON e.id = s.exam_id
@@ -873,7 +873,7 @@ router.get("/submissions/graded", async (req, res) => {
       JOIN courses c ON c.id = e.course_id
       JOIN course_teachers ct ON ct.course_id = c.id
       LEFT JOIN student_profiles sp ON sp.user_id = u.id
-      WHERE ct.teacher_user_id = ? AND s.status = 'graded'
+      WHERE ct.teacher_user_id = ? AND CAST(s.status AS VARCHAR) = 'graded'
       ORDER BY submitted_at DESC`, [teacherId, teacherId]);
     
     // Map student_identifier to student_id for frontend compatibility
