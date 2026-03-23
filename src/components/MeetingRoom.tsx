@@ -165,7 +165,7 @@ interface MeetingRoomProps {
 }
 
 export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLeave }: MeetingRoomProps) {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const currentUserId = String(user?.id || "");
   const currentUserName = user?.name || user?.email || "User";
 
@@ -793,7 +793,7 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
               className="rounded-full px-6 h-12 font-bold tracking-tight shadow-xl bg-[#3c4043] border-white/20 text-white hover:bg-blue-600 hover:border-transparent transition-all"
               onClick={() => {
                 if (confirm("Leave but keep room running? This will start an auto-recording of the session.")) {
-                  const currentToken = localStorage.getItem("token") || "";
+                  const currentToken = token || localStorage.getItem("edulinkx_token") || "";
                   socketRef.current?.emit("resume-for-students", roomId, currentToken);
                   cleanupAndLeave();
                 }
