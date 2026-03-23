@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/auth/AuthProvider";
 
-const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER;
+const SIGNALING_SERVER = import.meta.env.VITE_SIGNALING_SERVER || "https://web-meet.duckdns.org";
 
 // ─── Types ───
 interface ParticipantOverlayProps {
@@ -171,8 +171,8 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
   const [remoteUserNames, setRemoteUserNames] = useState<Record<string, { name: string; image?: string | null }>>({});
   const [remoteStates, setRemoteStates] = useState<Record<string, UserState>>({});
 
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isVideoOff, setIsVideoOff] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [pinnedUser, setPinnedUser] = useState<string | null>(null);
@@ -295,6 +295,9 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
       });
       localStreamRef.current = stream;
       setLocalStream(stream);
+      // Default: mic and camera OFF
+      stream.getAudioTracks().forEach((t) => (t.enabled = false));
+      stream.getVideoTracks().forEach((t) => (t.enabled = false));
       Object.entries(peersRef.current).forEach(([, pc]) => {
         if (pc.signalingState !== "closed") stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       });

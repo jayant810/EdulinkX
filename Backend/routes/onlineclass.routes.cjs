@@ -114,10 +114,12 @@ router.get('/student/online-classes', async (req, res) => {
     const [rows] = await pool.execute(
       `SELECT oc.*, c.course_name, c.course_code, c.department, u.name AS teacher_name
        FROM online_classes oc
-       JOIN courses c ON oc.course_id = c.id
-       JOIN course_students cs ON cs.course_id = c.id AND cs.student_user_id = ?
+       LEFT JOIN courses c ON oc.course_id = c.id
        JOIN users u ON oc.teacher_user_id = u.id
        WHERE oc.status IN ('live', 'scheduled')
+         AND (oc.course_id IS NULL OR oc.course_id IN (
+           SELECT cs.course_id FROM course_students cs WHERE cs.student_user_id = ?
+         ))
        ORDER BY CASE WHEN oc.status = 'live' THEN 0 ELSE 1 END, oc.scheduled_at ASC`,
       [req.user.id]
     );
@@ -146,6 +148,25 @@ router.get('/admin/online-classes', async (req, res) => {
   } catch (err) {
     console.error('[OnlineClass] Admin list error:', err);
     res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+});
+
+// ─── Admin: Force-end any live class ───
+router.patch('/admin/online-classes/:id/end', async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const [rows] = await pool.execute(
+      `UPDATE online_classes SET status = 'ended', ended_at = NOW()
+       WHERE id = ? AND status = 'live' RETURNING *`,
+      [req.params.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Class not found or not live' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[OnlineClass] Admin end error:', err);
+    res.status(500).json({ error: 'Failed to end class' });
   }
 });
 

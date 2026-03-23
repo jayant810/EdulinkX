@@ -3,9 +3,10 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/auth/AuthProvider";
 import { Helmet } from "react-helmet-async";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Video, Radio, CalendarClock, CheckCircle2, Users, Building2, BookOpen, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Video, Radio, CalendarClock, CheckCircle2, Users, Building2, BookOpen, Clock, Square, LogIn } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import MeetingRoom from "@/components/MeetingRoom";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
@@ -28,6 +29,7 @@ export default function AdminOnlineClasses() {
   const { token } = useAuth();
   const [classes, setClasses] = useState<OnlineClass[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeRoom, setActiveRoom] = useState<{ roomId: string; title: string } | null>(null);
 
   const fetchClasses = useCallback(async () => {
     try {
@@ -47,6 +49,33 @@ export default function AdminOnlineClasses() {
     const interval = setInterval(fetchClasses, 15000);
     return () => clearInterval(interval);
   }, [fetchClasses]);
+
+  const endClass = async (cls: OnlineClass) => {
+    if (!confirm(`End "${cls.title}" by ${cls.teacher_name}?`)) return;
+    try {
+      await fetch(`${API_BASE}/api/admin/online-classes/${cls.id}/end`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchClasses();
+    } catch (err) {
+      console.error("End class failed:", err);
+    }
+  };
+
+  // If admin joined a meeting
+  if (activeRoom) {
+    return (
+      <MeetingRoom
+        roomId={activeRoom.roomId}
+        isAdmin={false}
+        onLeave={() => {
+          setActiveRoom(null);
+          fetchClasses();
+        }}
+      />
+    );
+  }
 
   const liveClasses = classes.filter((c) => c.status === "live");
   const scheduledClasses = classes.filter((c) => c.status === "scheduled");
@@ -124,6 +153,7 @@ export default function AdminOnlineClasses() {
                         <th className="pb-3 font-medium">Course</th>
                         <th className="pb-3 font-medium">Status</th>
                         <th className="pb-3 font-medium">Time</th>
+                        <th className="pb-3 font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -165,6 +195,18 @@ export default function AdminOnlineClasses() {
                               {cls.status === "scheduled" && cls.scheduled_at && new Date(cls.scheduled_at).toLocaleString()}
                               {cls.status === "ended" && cls.ended_at && new Date(cls.ended_at).toLocaleString()}
                             </span>
+                          </td>
+                          <td className="py-3">
+                            {cls.status === "live" && (
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setActiveRoom({ roomId: cls.room_id, title: cls.title })}>
+                                  <LogIn className="w-3.5 h-3.5" /> Join
+                                </Button>
+                                <Button size="sm" variant="destructive" className="gap-1 text-xs" onClick={() => endClass(cls)}>
+                                  <Square className="w-3 h-3" /> End
+                                </Button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
