@@ -439,6 +439,19 @@ const initializeDatabase = async () => {
 
       INSERT INTO departments (name) VALUES ('Computer Science'), ('Electronics'), ('Mechanical'), ('Civil'), ('Business') ON CONFLICT DO NOTHING;
 
+      CREATE TABLE IF NOT EXISTS online_classes (
+        id SERIAL PRIMARY KEY,
+        room_id VARCHAR(255) UNIQUE NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        teacher_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        course_id INT REFERENCES courses(id) ON DELETE SET NULL,
+        status VARCHAR(20) DEFAULT 'scheduled',
+        scheduled_at TIMESTAMP,
+        started_at TIMESTAMP,
+        ended_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       -- ALTER TABLES IF THEY ALREADY EXIST TO ADD NEW COLUMNS
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS answer_key_url TEXT;

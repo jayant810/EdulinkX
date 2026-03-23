@@ -77,6 +77,7 @@ const adminRoutes = require("./routes/admin.routes.cjs");
 const aiRoutes = require("./routes/ai.routes.cjs");
 const gradingRoutes = require("./routes/grading.routes.cjs");
 const hodRoutes = require("./routes/hod.routes.cjs");
+const onlineClassRoutes = require("./routes/onlineclass.routes.cjs");
 
 // Auth routes (NO TOKEN REQUIRED)
 app.use("/api/auth", authRoutes); 
@@ -113,6 +114,7 @@ app.use("/api/admin", verifyToken, adminRoutes);
 app.use("/api/ai", verifyToken, aiRoutes);
 app.use("/api/teacher", verifyToken, gradingRoutes);
 app.use("/api/hod", verifyToken, hodRoutes);
+app.use("/api", verifyToken, onlineClassRoutes);
 
 
 // Socket.io logic

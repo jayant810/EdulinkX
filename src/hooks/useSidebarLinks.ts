@@ -20,7 +20,8 @@ import {
   Shield,
   Upload,
   ClipboardCheck,
-  DollarSign
+  DollarSign,
+  Video
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 
@@ -41,6 +42,7 @@ export const useSidebarLinks = () => {
     { icon: LayoutGrid, label: "Community", href: "/community" },
     { icon: MessageSquare, label: "Messages", href: "/admin/messages" },
     { icon: Shield, label: "Roles & Access", href: "/admin/roles" },
+    { icon: Video, label: "Online Classes", href: "/admin/online-classes" },
     { icon: Settings, label: "Settings", href: "/admin/settings" },
   ];
 
@@ -57,6 +59,7 @@ export const useSidebarLinks = () => {
     { icon: Calendar, label: "Holidays", href: "/admin/holidays" },
     { icon: LayoutGrid, label: "Community", href: "/community" },
     { icon: MessageSquare, label: "Messages", href: "/teacher/messages" },
+    { icon: Video, label: "Online Classes", href: "/teacher/online-classes" },
     { icon: Settings, label: "Settings", href: "/teacher/settings" },
   ];
 
@@ -72,6 +75,7 @@ export const useSidebarLinks = () => {
     { icon: LayoutGrid, label: "Community", href: "/community" },
     { icon: Bell, label: "Notifications", href: "/student/notifications" },
     { icon: MessageSquare, label: "Messages", href: "/student/messages" },
+    { icon: Video, label: "Online Classes", href: "/student/online-classes" },
     { icon: Settings, label: "Settings", href: "/student/settings" },
   ];
 

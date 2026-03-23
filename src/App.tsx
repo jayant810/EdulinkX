@@ -31,6 +31,7 @@ import StudentFees from "./pages/student/Fees";
 import StudentNotifications from "./pages/student/Notifications";
 import StudentMessages from "./pages/student/Messages";
 import StudentSettings from "./pages/student/Settings";
+import StudentOnlineClasses from "./pages/student/OnlineClasses";
 import StudentCoursePlayer from "@/pages/student/StudentCoursePlayer";
 
 // Teacher Pages
@@ -48,6 +49,7 @@ import TeacherMessages from "./pages/teacher/Messages";
 import TeacherSettings from "./pages/teacher/Settings";
 import ManageCourse from "@/pages/teacher/ManageCourse";
 import HODDashboard from "./pages/teacher/HODDashboard";
+import TeacherOnlineClasses from "./pages/teacher/OnlineClasses";
 
 // Admin Pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -63,6 +65,7 @@ import AdminRoles from "./pages/admin/Roles";
 import AdminHolidays from "./pages/admin/Holidays";
 import AdminSettings from "./pages/admin/Settings";
 import AdminMessages from "./pages/admin/Messages";
+import AdminOnlineClasses from "./pages/admin/OnlineClasses";
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -117,6 +120,15 @@ const App = () => (
                   <Route path="/about" element={<About />} />
                   <Route path="/contact" element={<Contact />} />
                 </Route>
+
+              <Route
+                path="/student/online-classes"
+                element={
+                  <ProtectedRoute allowedRoles={["student"]}>
+                    <StudentOnlineClasses />
+                  </ProtectedRoute>
+                }
+              />
 
                 <Route path="/reset-password" element={<ResetPassword />} />
 
@@ -380,6 +392,14 @@ const App = () => (
 
               {/* ADMIN PORTAL (protected: admin only) */}
               <Route
+                path="/teacher/online-classes"
+                element={
+                  <ProtectedRoute allowedRoles={["teacher"]}>
+                    <TeacherOnlineClasses />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/admin/dashboard"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
@@ -480,6 +500,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
                     <AdminMessages />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/online-classes"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <AdminOnlineClasses />
                   </ProtectedRoute>
                 }
               />
