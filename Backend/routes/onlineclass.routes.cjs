@@ -17,8 +17,8 @@ router.post('/online-classes', async (req, res) => {
     const startedAt = instant ? new Date().toISOString() : null;
 
     const [rows] = await pool.execute(
-      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at, created_by_role, audience_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'course') RETURNING *`,
       [roomId, title, req.user.id, courseId || null, status, scheduledAt || null, startedAt]
     );
 
@@ -106,7 +106,7 @@ router.delete('/online-classes/:id', async (req, res) => {
   }
 });
 
-// ─── Student: List live + scheduled classes for enrolled courses ───
+// ─── Student: List live + scheduled classes (enrolled courses + targeted) ───
 router.get('/student/online-classes', async (req, res) => {
   try {
     if (req.user.role !== 'student') return res.status(403).json({ error: 'Forbidden' });
@@ -117,11 +117,23 @@ router.get('/student/online-classes', async (req, res) => {
        LEFT JOIN courses c ON oc.course_id = c.id
        JOIN users u ON oc.teacher_user_id = u.id
        WHERE oc.status IN ('live', 'scheduled')
-         AND (oc.course_id IS NULL OR oc.course_id IN (
-           SELECT cs.course_id FROM course_students cs WHERE cs.student_user_id = ?
-         ))
+         AND (
+           oc.audience_type = 'everyone'
+           OR oc.audience_type = 'students_only'
+           OR oc.audience_type = 'teachers_and_students'
+           OR (oc.audience_type = 'course' AND (
+             oc.course_id IS NULL OR oc.course_id IN (
+               SELECT cs.course_id FROM course_students cs WHERE cs.student_user_id = ?
+             )
+           ))
+           OR (oc.audience_type = 'department' AND c.department IN (
+             SELECT DISTINCT c2.department FROM courses c2
+             JOIN course_students cs2 ON cs2.course_id = c2.id
+             WHERE cs2.student_user_id = ?
+           ))
+         )
        ORDER BY CASE WHEN oc.status = 'live' THEN 0 ELSE 1 END, oc.scheduled_at ASC`,
-      [req.user.id]
+      [req.user.id, req.user.id]
     );
 
     res.json(rows);
@@ -167,6 +179,78 @@ router.patch('/admin/online-classes/:id/end', async (req, res) => {
   } catch (err) {
     console.error('[OnlineClass] Admin end error:', err);
     res.status(500).json({ error: 'Failed to end class' });
+  }
+});
+
+// ─── Admin: End ALL live meetings ───
+router.patch('/admin/online-classes/end-all', async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const [rows] = await pool.execute(
+      `UPDATE online_classes SET status = 'ended', ended_at = NOW()
+       WHERE status = 'live' RETURNING id, room_id`
+    );
+
+    res.json({ ended: rows.length, rooms: rows.map(r => r.room_id) });
+  } catch (err) {
+    console.error('[OnlineClass] Admin end-all error:', err);
+    res.status(500).json({ error: 'Failed to end all classes' });
+  }
+});
+
+// ─── Admin: Create a targeted meeting ───
+router.post('/admin/online-classes', async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const { title, audienceType, audienceTarget, scheduledAt, instant } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+    if (!audienceType) return res.status(400).json({ error: 'Audience type is required' });
+
+    const roomId = crypto.randomUUID();
+    const status = instant ? 'live' : 'scheduled';
+    const startedAt = instant ? new Date().toISOString() : null;
+    // audienceTarget is a JSON string of department names or course IDs
+    const targetStr = audienceTarget ? JSON.stringify(audienceTarget) : null;
+
+    const [rows] = await pool.execute(
+      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at, created_by_role, audience_type, audience_target)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, 'admin', ?, ?) RETURNING *`,
+      [roomId, title, req.user.id, status, scheduledAt || null, startedAt, audienceType, targetStr]
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[OnlineClass] Admin create error:', err);
+    res.status(500).json({ error: 'Failed to create class' });
+  }
+});
+
+// ─── Teacher: List live + scheduled classes visible to teachers ───
+router.get('/teacher/online-classes/visible', async (req, res) => {
+  try {
+    if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Forbidden' });
+
+    const [rows] = await pool.execute(
+      `SELECT oc.*, c.course_name, c.course_code, c.department, u.name AS teacher_name
+       FROM online_classes oc
+       LEFT JOIN courses c ON oc.course_id = c.id
+       JOIN users u ON oc.teacher_user_id = u.id
+       WHERE oc.status IN ('live', 'scheduled')
+         AND oc.created_by_role = 'admin'
+         AND (
+           oc.audience_type = 'everyone'
+           OR oc.audience_type = 'teachers_only'
+           OR oc.audience_type = 'teachers_and_students'
+         )
+       ORDER BY CASE WHEN oc.status = 'live' THEN 0 ELSE 1 END, oc.scheduled_at ASC`
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[OnlineClass] Teacher visible list error:', err);
+    res.status(500).json({ error: 'Failed to fetch classes' });
   }
 });
 

@@ -5,7 +5,7 @@ import { io, Socket } from "socket.io-client";
 import {
   Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Users,
   Monitor, Shield, MessageSquare,
-  Send, Hand, Pin, X
+  Send, Hand, Pin, X, UserX, MicOff as MicOffIcon, VideoOff as VideoOffIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,12 +101,16 @@ const VideoTile = memo(
   }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
 
+    // Check if video tracks are actually active (handles remote black-screen issue)
+    const hasActiveVideo = stream && stream.getVideoTracks().some((t) => t.enabled && !t.muted && t.readyState === "live");
+    const shouldShowVideo = !isVideoOff && hasActiveVideo;
+
     useEffect(() => {
-      if (videoRef.current && stream && !isVideoOff) {
+      if (videoRef.current && stream && shouldShowVideo) {
         if (videoRef.current.srcObject !== stream) videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
       }
-    }, [stream, isVideoOff]);
+    }, [stream, shouldShowVideo]);
 
     return (
       <div
@@ -114,7 +118,7 @@ const VideoTile = memo(
           overlayProps.isPinned ? "border-blue-500 ring-4 ring-blue-500/20" : "border-transparent hover:border-white/5"
         }`}
       >
-        {!isVideoOff && stream ? (
+        {shouldShowVideo && stream ? (
           <video
             ref={videoRef}
             autoPlay
@@ -126,7 +130,7 @@ const VideoTile = memo(
           />
         ) : (
           <div className="flex flex-col items-center justify-center gap-4">
-            <div className={`w-24 h-24 sm:w-36 sm:h-32 rounded-full flex items-center justify-center text-4xl shadow-2xl border-4 border-white/5 ${isLocal ? "bg-blue-600" : "bg-[#5f6368]"}`}>
+            <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center text-4xl shadow-2xl border-4 border-white/5 ${isLocal ? "bg-blue-600" : "bg-[#5f6368]"}`}>
               <span className="text-white font-black uppercase">{name.charAt(0)}</span>
             </div>
           </div>
@@ -177,12 +181,13 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [pinnedUser, setPinnedUser] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(isAdminProp);
-  const [isWaiting, setIsWaiting] = useState(false);
-  const [isRejected, setIsRejected] = useState(false);
-  const [waitingUsers, setWaitingUsers] = useState<any[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"chat" | "participants" | null>(null);
+
+  // Termination / kick states
+  const [roomEnded, setRoomEnded] = useState(false);
+  const [wasKicked, setWasKicked] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
@@ -266,10 +271,14 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
   const visibleParticipants = sortedParticipants.slice(0, sidebarTab ? (activePresenter ? 4 : 6) : 12);
   const overflowCount = sortedParticipants.length - visibleParticipants.length;
 
+  // ─── Improved grid layout ───
   const getGridClass = (count: number) => {
-    if (count === 1) return "grid-cols-1 max-w-5xl";
-    if (count === 2) return "grid-cols-1 sm:grid-cols-2 max-w-6xl";
-    return "grid-cols-2 sm:grid-cols-3 max-w-7xl";
+    if (count === 1) return "grid-cols-1 max-w-4xl";
+    if (count === 2) return "grid-cols-2 max-w-6xl";
+    if (count <= 4) return "grid-cols-2 max-w-6xl";
+    if (count <= 6) return "grid-cols-3";
+    if (count <= 9) return "grid-cols-3";
+    return "grid-cols-4";
   };
 
   const triggerNegotiation = async (userId: string) => {
@@ -307,6 +316,13 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
       return null;
     }
   };
+
+  const cleanupAndLeave = useCallback(() => {
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    socketRef.current?.disconnect();
+    onLeave();
+  }, [onLeave]);
 
   useEffect(() => {
     if (!currentUserId || initializedRef.current) return;
@@ -352,19 +368,19 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
     };
 
     socket.on("connect", () => {
-      // EdulinkX teacher = admin of the room, students join normally
       setIsAdmin(isAdminProp);
-      socket.emit("join-room", roomId, currentUserId, currentUserName, isAdminProp, false, null);
+      // All EdulinkX users are pre-authorized — skip waiting room
+      socket.emit("join-room", roomId, currentUserId, currentUserName, isAdminProp, true, null);
     });
 
     socket.on("join-approved", async () => {
-      setIsWaiting(false);
       socket.emit("ready-to-connect", roomId, currentUserId, currentUserName, null);
       getMedia();
     });
 
     socket.on("request-to-join", (u: any) =>
-      setWaitingUsers((prev) => (prev.find((p) => p.userId === u.userId) ? prev : [...prev, u]))
+      // Still handle in case waiting room is re-enabled
+      socket.emit("approve-user", roomId, u.userId)
     );
 
     socket.on("user-connected", (userId: string, userName: string, userImage: string | null) => {
@@ -424,8 +440,37 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
     });
 
     socket.on("chat-message", (message: any) => setMessages((prev) => [...prev, message]));
-    socket.on("waiting-for-admin", () => setIsWaiting(true));
-    socket.on("join-rejected", () => setIsRejected(true));
+
+    // ─── Moderation events (received) ───
+    socket.on("room-ended", () => {
+      setRoomEnded(true);
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    });
+
+    socket.on("you-were-kicked", () => {
+      setWasKicked(true);
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    });
+
+    socket.on("force-muted", () => {
+      const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = false;
+        setIsMuted(true);
+        socket.emit("toggle-mute", roomId, currentUserId, true);
+      }
+    });
+
+    socket.on("force-video-off", () => {
+      const videoTrack = localStreamRef.current?.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = false;
+        setIsVideoOff(true);
+        socket.emit("toggle-video", roomId, currentUserId, true);
+      }
+    });
 
     return () => {
       socket.disconnect();
@@ -488,23 +533,43 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
     setNewMessage("");
   };
 
-  const leaveRoom = () => {
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    socketRef.current?.disconnect();
-    onLeave();
+  // ─── Host moderation actions ───
+  const kickUser = (targetUserId: string) => {
+    socketRef.current?.emit("kick-user", roomId, targetUserId);
+    // Remove them from our local state immediately
+    setRemoteUserNames((prev) => { const n = { ...prev }; delete n[targetUserId]; return n; });
+    setRemoteStates((prev) => { const n = { ...prev }; delete n[targetUserId]; return n; });
+    if (peersRef.current[targetUserId]) {
+      peersRef.current[targetUserId].close();
+      delete peersRef.current[targetUserId];
+    }
   };
 
-  if (isRejected)
+  const forceMuteUser = (targetUserId: string) => {
+    socketRef.current?.emit("force-mute-user", roomId, targetUserId);
+    setRemoteStates((prev) => ({ ...prev, [targetUserId]: { ...prev[targetUserId], isMuted: true } }));
+  };
+
+  const forceVideoOffUser = (targetUserId: string) => {
+    socketRef.current?.emit("force-video-off-user", roomId, targetUserId);
+    setRemoteStates((prev) => ({ ...prev, [targetUserId]: { ...prev[targetUserId], isVideoOff: true } }));
+  };
+
+  // ─── Termination screens ───
+  if (roomEnded)
     return (
-      <div className="h-screen flex items-center justify-center bg-[#202124] text-white font-black uppercase tracking-widest">
-        Access Denied
+      <div className="h-screen flex flex-col items-center justify-center bg-[#202124] text-white gap-4">
+        <div className="text-2xl font-black uppercase tracking-widest">Meeting Ended</div>
+        <p className="text-neutral-400 text-sm">The host has ended this meeting for everyone.</p>
+        <Button variant="secondary" className="mt-4" onClick={onLeave}>Return to Dashboard</Button>
       </div>
     );
-  if (isWaiting)
+  if (wasKicked)
     return (
-      <div className="h-screen flex items-center justify-center bg-[#202124] text-white font-black tracking-widest animate-pulse">
-        Waiting for host to admit you...
+      <div className="h-screen flex flex-col items-center justify-center bg-[#202124] text-white gap-4">
+        <div className="text-2xl font-black uppercase tracking-widest text-red-400">Removed from Meeting</div>
+        <p className="text-neutral-400 text-sm">You have been removed from this meeting by the host.</p>
+        <Button variant="secondary" className="mt-4" onClick={onLeave}>Return to Dashboard</Button>
       </div>
     );
 
@@ -540,14 +605,14 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
               </div>
             </div>
           ) : (
-            <div className={`grid gap-4 w-full h-full transition-all duration-500 items-center justify-items-center place-content-center ${getGridClass(visibleParticipants.length + (overflowCount > 0 ? 1 : 0))}`}>
+            <div className={`grid gap-3 w-full transition-all duration-500 items-center justify-items-center place-content-center mx-auto auto-rows-fr ${getGridClass(visibleParticipants.length + (overflowCount > 0 ? 1 : 0))}`} style={{ height: "calc(100vh - 8rem)" }}>
               {visibleParticipants.map((p, index) => (
-                <div key={p.id} className="aspect-video relative group cursor-pointer w-full h-full" onClick={() => setPinnedUser(pinnedUser === p.id ? null : p.id)}>
+                <div key={p.id} className="aspect-video relative group cursor-pointer w-full" onClick={() => setPinnedUser(pinnedUser === p.id ? null : p.id)}>
                   <VideoTile stream={p.stream} isVideoOff={p.isVideoOff} name={p.name} image={p.image} overlayProps={{ ...p, number: index + 1 }} isLocal={p.isMe} isMuted={p.isMuted} />
                 </div>
               ))}
               {overflowCount > 0 && (
-                <div className="aspect-video w-full h-full">
+                <div className="aspect-video w-full">
                   <OverflowTile count={overflowCount} onClick={() => setSidebarTab("participants")} />
                 </div>
               )}
@@ -579,13 +644,28 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
                         {p.isAdmin && <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">Host</span>}
                       </div>
                     </div>
-                    <div className="flex gap-1.5 text-neutral-400">
+                    <div className="flex gap-1.5 items-center text-neutral-400">
                       {p.isMuted && <MicOff className="w-4 h-4 text-red-500" />}
                       {p.isVideoOff && <VideoOff className="w-4 h-4 text-neutral-400" />}
                       {p.isHandRaised && <Hand className="w-4 h-4 text-yellow-500 fill-current" />}
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setPinnedUser(pinnedUser === p.id ? null : p.id)}>
-                        <Pin className={`w-4 h-4 ${p.isPinned ? "text-blue-600 fill-current" : "text-neutral-300"}`} />
-                      </Button>
+                      {/* Host moderation controls — only for non-self, non-presentation participants */}
+                      {isAdmin && !p.isMe && !p.isPresentation && (
+                        <>
+                          {!p.isMuted && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-red-50" onClick={() => forceMuteUser(p.id)} title="Mute">
+                              <MicOff className="w-3.5 h-3.5 text-neutral-400 hover:text-red-500" />
+                            </Button>
+                          )}
+                          {!p.isVideoOff && (
+                            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-red-50" onClick={() => forceVideoOffUser(p.id)} title="Turn off camera">
+                              <VideoOff className="w-3.5 h-3.5 text-neutral-400 hover:text-red-500" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-red-50" onClick={() => kickUser(p.id)} title="Remove from meeting">
+                            <UserX className="w-3.5 h-3.5 text-red-400" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -634,7 +714,7 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
           <Button
             variant={isMuted ? "destructive" : "secondary"}
             size="icon"
-            className="rounded-full h-12 w-12 bg-[#3c4043] border-none text-white hover:bg-[#4a4e52] transition-all hover:scale-110 active:scale-95 shadow-lg"
+            className={`rounded-full h-12 w-12 border-none transition-all hover:scale-110 active:scale-95 shadow-lg ${isMuted ? "bg-red-500 hover:bg-red-600" : "bg-[#3c4043] text-white hover:bg-[#4a4e52]"}`}
             onClick={toggleMute}
           >
             {isMuted ? <MicOff /> : <Mic />}
@@ -642,7 +722,7 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
           <Button
             variant={isVideoOff ? "destructive" : "secondary"}
             size="icon"
-            className="rounded-full h-12 w-12 bg-[#3c4043] border-none text-white hover:bg-[#4a4e52] transition-all hover:scale-110 active:scale-95 shadow-lg"
+            className={`rounded-full h-12 w-12 border-none transition-all hover:scale-110 active:scale-95 shadow-lg ${isVideoOff ? "bg-red-500 hover:bg-red-600" : "bg-[#3c4043] text-white hover:bg-[#4a4e52]"}`}
             onClick={toggleVideo}
           >
             {isVideoOff ? <VideoOff /> : <VideoIcon />}
@@ -667,7 +747,19 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
           >
             <Monitor />
           </Button>
-          <Button variant="destructive" className="rounded-full px-8 h-12 ml-4 font-black tracking-tighter uppercase shadow-xl shadow-red-600/20 hover:scale-105 active:scale-95" onClick={leaveRoom}>
+          {isAdmin && (
+            <Button
+              variant="destructive"
+              className="rounded-full px-6 h-12 font-black tracking-tighter uppercase shadow-xl shadow-red-600/20 hover:scale-105 active:scale-95 bg-orange-600 hover:bg-orange-700"
+              onClick={() => {
+                socketRef.current?.emit("force-end-room", roomId);
+                cleanupAndLeave();
+              }}
+            >
+              End for All
+            </Button>
+          )}
+          <Button variant="destructive" className="rounded-full px-8 h-12 ml-2 font-black tracking-tighter uppercase shadow-xl shadow-red-600/20 hover:scale-105 active:scale-95" onClick={cleanupAndLeave}>
             <PhoneOff className="mr-2 w-5 h-5" /> Leave
           </Button>
         </div>
@@ -691,45 +783,6 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
           </Button>
         </div>
       </div>
-
-      {/* Admin: Entry Requests */}
-      {isAdmin && waitingUsers.length > 0 && (
-        <div className="absolute top-6 left-6 w-80 bg-white text-neutral-900 rounded-3xl p-6 shadow-2xl z-50 border border-neutral-200 animate-in fade-in zoom-in-95 duration-500">
-          <h3 className="font-black text-xs mb-5 flex items-center gap-2 text-blue-600 uppercase tracking-widest">
-            <Shield className="h-4 w-4" /> Entry Request
-          </h3>
-          <div className="space-y-4">
-            {waitingUsers.map((wu) => (
-              <div key={wu.userId} className="flex items-center justify-between bg-neutral-50 p-4 rounded-2xl border border-neutral-100">
-                <span className="text-sm font-black truncate flex-1 mr-3">{wu.userName}</span>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-red-600 font-bold hover:bg-red-50"
-                    onClick={() => {
-                      socketRef.current?.emit("reject-user", roomId, wu.userId);
-                      setWaitingUsers((prev) => prev.filter((u) => u.userId !== wu.userId));
-                    }}
-                  >
-                    Deny
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-md"
-                    onClick={() => {
-                      socketRef.current?.emit("approve-user", roomId, wu.userId);
-                      setWaitingUsers((prev) => prev.filter((u) => u.userId !== wu.userId));
-                    }}
-                  >
-                    Admit
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
