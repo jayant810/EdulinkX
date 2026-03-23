@@ -1,10 +1,13 @@
 // src/pages/admin/OnlineClasses.tsx
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/auth/AuthProvider";
+import { Helmet } from "react-helmet-async";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Video, Radio, CalendarClock, CheckCircle2, Users, Building2, BookOpen, Clock } from "lucide-react";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 interface OnlineClass {
   id: number;
@@ -28,7 +31,7 @@ export default function AdminOnlineClasses() {
 
   const fetchClasses = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/admin/online-classes`, {
+      const res = await fetch(`${API_BASE}/api/admin/online-classes`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setClasses(await res.json());
@@ -49,121 +52,130 @@ export default function AdminOnlineClasses() {
   const scheduledClasses = classes.filter((c) => c.status === "scheduled");
   const endedClasses = classes.filter((c) => c.status === "ended");
 
-  const StatusBadge = ({ status }: { status: string }) => {
-    const styles: Record<string, string> = {
-      live: "bg-red-100 text-red-700",
-      scheduled: "bg-blue-100 text-blue-700",
-      ended: "bg-slate-100 text-slate-600",
-    };
-    return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${styles[status] || styles.ended}`}>
-        {status === "live" && <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />}
-        {status}
-      </span>
-    );
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900">Online Classes Monitor</h1>
-          <p className="text-slate-500 mt-1">Overview of all virtual classrooms across departments</p>
-        </div>
+    <>
+      <Helmet><title>Online Classes Monitor - EdulinkX</title></Helmet>
+      <DashboardLayout title="Online Classes" subtitle="Monitor all virtual classrooms across departments">
+        <div className="space-y-6">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card variant="stat" className="border-l-destructive">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Live Now</p>
+                    <p className="text-2xl font-bold font-display text-destructive">{liveClasses.length}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                    <Radio className="w-6 h-6 text-destructive" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card variant="stat" className="border-l-primary">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Scheduled</p>
+                    <p className="text-2xl font-bold font-display text-primary">{scheduledClasses.length}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <CalendarClock className="w-6 h-6 text-primary" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card variant="stat" className="border-l-success">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Completed</p>
+                    <p className="text-2xl font-bold font-display text-success">{endedClasses.length}</p>
+                  </div>
+                  <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+                    <CheckCircle2 className="w-6 h-6 text-success" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border-red-200 bg-gradient-to-br from-red-50 to-white">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-red-100"><Radio className="w-6 h-6 text-red-600" /></div>
-              <div>
-                <p className="text-2xl font-black text-red-700">{liveClasses.length}</p>
-                <p className="text-sm text-slate-500 font-semibold">Live Now</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-white">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-blue-100"><CalendarClock className="w-6 h-6 text-blue-600" /></div>
-              <div>
-                <p className="text-2xl font-black text-blue-700">{scheduledClasses.length}</p>
-                <p className="text-sm text-slate-500 font-semibold">Scheduled</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-green-200 bg-gradient-to-br from-green-50 to-white">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-green-100"><CheckCircle2 className="w-6 h-6 text-green-600" /></div>
-              <div>
-                <p className="text-2xl font-black text-green-700">{endedClasses.length}</p>
-                <p className="text-sm text-slate-500 font-semibold">Completed</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Table */}
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Video className="w-5 h-5 text-blue-600" /> All Classes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!loading && classes.length === 0 ? (
-              <div className="text-center py-12">
-                <Video className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500 font-semibold">No online classes created yet</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs font-black text-slate-400 uppercase tracking-widest">
-                      <th className="p-3">Title</th>
-                      <th className="p-3">Teacher</th>
-                      <th className="p-3">Department</th>
-                      <th className="p-3">Course</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {classes.map((cls) => (
-                      <tr key={cls.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-3 font-bold text-slate-900">{cls.title}</td>
-                        <td className="p-3">
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <Users className="w-3.5 h-3.5" /> {cls.teacher_name || "—"}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <Building2 className="w-3.5 h-3.5" /> {cls.department || "—"}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <BookOpen className="w-3.5 h-3.5" /> {cls.course_code ? `${cls.course_code}` : "—"}
-                          </span>
-                        </td>
-                        <td className="p-3"><StatusBadge status={cls.status} /></td>
-                        <td className="p-3 text-xs text-slate-400 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {cls.status === "live" && cls.started_at && new Date(cls.started_at).toLocaleTimeString()}
-                          {cls.status === "scheduled" && cls.scheduled_at && new Date(cls.scheduled_at).toLocaleString()}
-                          {cls.status === "ended" && cls.ended_at && new Date(cls.ended_at).toLocaleString()}
-                        </td>
+          {/* Table */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Video className="w-5 h-5 text-primary" /> All Classes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!loading && classes.length === 0 ? (
+                <div className="text-center py-12">
+                  <Video className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                  <p className="text-muted-foreground font-medium">No online classes created yet</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-sm text-muted-foreground border-b border-border">
+                        <th className="pb-3 font-medium">Title</th>
+                        <th className="pb-3 font-medium">Teacher</th>
+                        <th className="pb-3 font-medium">Department</th>
+                        <th className="pb-3 font-medium">Course</th>
+                        <th className="pb-3 font-medium">Status</th>
+                        <th className="pb-3 font-medium">Time</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+                    </thead>
+                    <tbody>
+                      {classes.map((cls) => (
+                        <tr key={cls.id} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
+                          <td className="py-3 font-medium">{cls.title}</td>
+                          <td className="py-3">
+                            <span className="flex items-center gap-1 text-muted-foreground text-sm">
+                              <Users className="w-3.5 h-3.5" /> {cls.teacher_name || "—"}
+                            </span>
+                          </td>
+                          <td className="py-3">
+                            <span className="flex items-center gap-1 text-muted-foreground text-sm">
+                              <Building2 className="w-3.5 h-3.5" /> {cls.department || "—"}
+                            </span>
+                          </td>
+                          <td className="py-3">
+                            <span className="flex items-center gap-1 text-muted-foreground text-sm">
+                              <BookOpen className="w-3.5 h-3.5" /> {cls.course_code || "—"}
+                            </span>
+                          </td>
+                          <td className="py-3">
+                            {cls.status === "live" && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse" /> Live
+                              </span>
+                            )}
+                            {cls.status === "scheduled" && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">Scheduled</span>
+                            )}
+                            {cls.status === "ended" && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs font-medium">Ended</span>
+                            )}
+                          </td>
+                          <td className="py-3 text-sm text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {cls.status === "live" && cls.started_at && new Date(cls.started_at).toLocaleTimeString()}
+                              {cls.status === "scheduled" && cls.scheduled_at && new Date(cls.scheduled_at).toLocaleString()}
+                              {cls.status === "ended" && cls.ended_at && new Date(cls.ended_at).toLocaleString()}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    </>
   );
 }

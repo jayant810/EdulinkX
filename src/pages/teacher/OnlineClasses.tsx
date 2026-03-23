@@ -1,6 +1,7 @@
 // src/pages/teacher/OnlineClasses.tsx
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/auth/AuthProvider";
+import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,14 +20,14 @@ import {
   Trash2,
   Calendar,
   Clock,
-  ArrowLeft,
   Radio,
   CalendarClock,
   CheckCircle2,
 } from "lucide-react";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import MeetingRoom from "@/components/MeetingRoom";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 interface OnlineClass {
   id: number;
@@ -50,7 +51,7 @@ interface Course {
 }
 
 export default function TeacherOnlineClasses() {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const [classes, setClasses] = useState<OnlineClass[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +66,7 @@ export default function TeacherOnlineClasses() {
 
   const fetchClasses = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/online-classes`, {
+      const res = await fetch(`${API_BASE}/api/online-classes`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setClasses(await res.json());
@@ -78,7 +79,7 @@ export default function TeacherOnlineClasses() {
 
   const fetchCourses = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/teacher/courses`, {
+      const res = await fetch(`${API_BASE}/api/teacher/courses`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -98,7 +99,7 @@ export default function TeacherOnlineClasses() {
   const createClass = async () => {
     if (!title.trim()) return;
     try {
-      const res = await fetch(`${API}/api/online-classes`, {
+      const res = await fetch(`${API_BASE}/api/online-classes`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -126,7 +127,7 @@ export default function TeacherOnlineClasses() {
 
   const startClass = async (cls: OnlineClass) => {
     try {
-      const res = await fetch(`${API}/api/online-classes/${cls.id}/start`, {
+      const res = await fetch(`${API_BASE}/api/online-classes/${cls.id}/start`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -141,7 +142,7 @@ export default function TeacherOnlineClasses() {
 
   const endClass = async (cls: OnlineClass) => {
     try {
-      await fetch(`${API}/api/online-classes/${cls.id}/end`, {
+      await fetch(`${API_BASE}/api/online-classes/${cls.id}/end`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -154,7 +155,7 @@ export default function TeacherOnlineClasses() {
   const deleteClass = async (cls: OnlineClass) => {
     if (!confirm("Delete this scheduled class?")) return;
     try {
-      await fetch(`${API}/api/online-classes/${cls.id}`, {
+      await fetch(`${API_BASE}/api/online-classes/${cls.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -164,7 +165,7 @@ export default function TeacherOnlineClasses() {
     }
   };
 
-  // If inside a meeting room, show the full-screen room
+  // If inside a meeting room, show the full-screen room (outside layout)
   if (activeRoom) {
     return (
       <MeetingRoom
@@ -183,176 +184,159 @@ export default function TeacherOnlineClasses() {
   const endedClasses = classes.filter((c) => c.status === "ended");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">Online Classes</h1>
-            <p className="text-slate-500 mt-1">Create and manage your virtual classrooms</p>
-          </div>
-          <Button onClick={() => setShowForm(true)} className="bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 gap-2 font-bold">
+    <>
+      <Helmet><title>Online Classes - EdulinkX</title></Helmet>
+      <DashboardLayout
+        title="Online Classes"
+        subtitle="Create and manage your virtual classrooms"
+        headerActions={
+          <Button onClick={() => setShowForm(true)} variant="hero" size="sm" className="gap-2 font-semibold">
             <Plus className="w-4 h-4" /> New Class
           </Button>
-        </div>
+        }
+      >
+        <div className="space-y-6">
+          {/* Create Class Form */}
+          {showForm && (
+            <Card className="border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Video className="w-5 h-5 text-primary" /> Create New Class
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-3">
+                  <Button variant={isInstant ? "default" : "outline"} onClick={() => setIsInstant(true)}>
+                    <Play className="w-4 h-4 mr-2" /> Start Instantly
+                  </Button>
+                  <Button variant={!isInstant ? "default" : "outline"} onClick={() => setIsInstant(false)}>
+                    <Calendar className="w-4 h-4 mr-2" /> Schedule for Later
+                  </Button>
+                </div>
+                <Input placeholder="Class title (e.g. Data Structures - Lecture 5)" value={title} onChange={(e) => setTitle(e.target.value)} />
+                <Select value={courseId} onValueChange={setCourseId}>
+                  <SelectTrigger><SelectValue placeholder="Select a course (optional)" /></SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.course_code} - {c.course_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!isInstant && <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />}
+                <div className="flex gap-3">
+                  <Button onClick={createClass} className="font-semibold gap-2">
+                    {isInstant ? <Play className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
+                    {isInstant ? "Start Class Now" : "Schedule Class"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Create Class Form */}
-        {showForm && (
-          <Card className="border-blue-200 shadow-xl shadow-blue-100/50 animate-in slide-in-from-top-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Video className="w-5 h-5 text-blue-600" />
-                Create New Class
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-3">
-                <Button
-                  variant={isInstant ? "default" : "outline"}
-                  className={isInstant ? "bg-blue-600" : ""}
-                  onClick={() => setIsInstant(true)}
-                >
-                  <Play className="w-4 h-4 mr-2" /> Start Instantly
-                </Button>
-                <Button
-                  variant={!isInstant ? "default" : "outline"}
-                  className={!isInstant ? "bg-blue-600" : ""}
-                  onClick={() => setIsInstant(false)}
-                >
-                  <Calendar className="w-4 h-4 mr-2" /> Schedule for Later
-                </Button>
-              </div>
-              <Input placeholder="Class title (e.g. Data Structures - Lecture 5)" value={title} onChange={(e) => setTitle(e.target.value)} className="h-12" />
-              <Select value={courseId} onValueChange={setCourseId}>
-                <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select a course (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.course_code} - {c.course_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!isInstant && (
-                <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="h-12" />
-              )}
-              <div className="flex gap-3">
-                <Button onClick={createClass} className="bg-blue-600 hover:bg-blue-700 font-bold gap-2">
-                  {isInstant ? <Play className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
-                  {isInstant ? "Start Class Now" : "Schedule Class"}
-                </Button>
-                <Button variant="outline" onClick={() => setShowForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Live Classes */}
-        {liveClasses.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Radio className="w-5 h-5 text-red-500 animate-pulse" /> Live Now
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              {liveClasses.map((cls) => (
-                <Card key={cls.id} className="border-red-200 bg-gradient-to-br from-red-50 to-white shadow-lg">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-bold text-lg">{cls.title}</h3>
-                        {cls.course_name && <p className="text-sm text-slate-500 mt-1">{cls.course_code} - {cls.course_name}</p>}
-                        <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> Started {cls.started_at ? new Date(cls.started_at).toLocaleTimeString() : "now"}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 gap-1 font-bold" onClick={() => setActiveRoom({ roomId: cls.room_id, title: cls.title })}>
-                          <Video className="w-4 h-4" /> Rejoin
-                        </Button>
-                        <Button size="sm" variant="destructive" className="gap-1 font-bold" onClick={() => endClass(cls)}>
-                          <Square className="w-3 h-3" /> End
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Scheduled Classes */}
-        {scheduledClasses.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <CalendarClock className="w-5 h-5 text-blue-500" /> Scheduled
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              {scheduledClasses.map((cls) => (
-                <Card key={cls.id} className="border-blue-100 shadow-md hover:shadow-lg transition-shadow">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-bold text-lg">{cls.title}</h3>
-                        {cls.course_name && <p className="text-sm text-slate-500 mt-1">{cls.course_code} - {cls.course_name}</p>}
-                        {cls.scheduled_at && (
-                          <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" /> {new Date(cls.scheduled_at).toLocaleString()}
+          {/* Live Classes */}
+          {liveClasses.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <Radio className="w-4 h-4 text-destructive animate-pulse" /> Live Now
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {liveClasses.map((cls) => (
+                  <Card key={cls.id} className="border-destructive/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold">{cls.title}</h3>
+                          {cls.course_name && <p className="text-sm text-muted-foreground mt-1">{cls.course_code} - {cls.course_name}</p>}
+                          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Started {cls.started_at ? new Date(cls.started_at).toLocaleTimeString() : "now"}
                           </p>
-                        )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" className="gap-1" onClick={() => setActiveRoom({ roomId: cls.room_id, title: cls.title })}>
+                            <Video className="w-4 h-4" /> Rejoin
+                          </Button>
+                          <Button size="sm" variant="destructive" className="gap-1" onClick={() => endClass(cls)}>
+                            <Square className="w-3 h-3" /> End
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700 gap-1 font-bold" onClick={() => startClass(cls)}>
-                          <Play className="w-4 h-4" /> Start
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50" onClick={() => deleteClass(cls)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Scheduled Classes */}
+          {scheduledClasses.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-primary" /> Scheduled
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {scheduledClasses.map((cls) => (
+                  <Card key={cls.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold">{cls.title}</h3>
+                          {cls.course_name && <p className="text-sm text-muted-foreground mt-1">{cls.course_code} - {cls.course_name}</p>}
+                          {cls.scheduled_at && (
+                            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> {new Date(cls.scheduled_at).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="gap-1 text-green-600 border-green-200 hover:bg-green-50" onClick={() => startClass(cls)}>
+                            <Play className="w-4 h-4" /> Start
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteClass(cls)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Ended Classes */}
-        {endedClasses.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-green-500" /> Completed
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {endedClasses.map((cls) => (
-                <Card key={cls.id} className="border-slate-100 opacity-75">
-                  <CardContent className="p-4">
-                    <h3 className="font-bold text-sm">{cls.title}</h3>
-                    {cls.course_name && <p className="text-xs text-slate-400 mt-1">{cls.course_code} - {cls.course_name}</p>}
-                    <p className="text-xs text-slate-400 mt-2">{cls.ended_at ? new Date(cls.ended_at).toLocaleString() : ""}</p>
-                  </CardContent>
-                </Card>
-              ))}
+          {/* Ended Classes */}
+          {endedClasses.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-success" /> Completed
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {endedClasses.map((cls) => (
+                  <Card key={cls.id} className="opacity-70">
+                    <CardContent className="p-4">
+                      <h3 className="font-medium text-sm">{cls.title}</h3>
+                      {cls.course_name && <p className="text-xs text-muted-foreground mt-1">{cls.course_code} - {cls.course_name}</p>}
+                      <p className="text-xs text-muted-foreground mt-2">{cls.ended_at ? new Date(cls.ended_at).toLocaleString() : ""}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Empty state */}
-        {!loading && classes.length === 0 && !showForm && (
-          <div className="text-center py-20">
-            <Video className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-slate-700">No online classes yet</h3>
-            <p className="text-slate-500 mt-2">Create your first virtual classroom to get started</p>
-            <Button className="mt-6 bg-blue-600 hover:bg-blue-700 gap-2 font-bold" onClick={() => setShowForm(true)}>
-              <Plus className="w-4 h-4" /> Create Class
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
+          {/* Empty state */}
+          {!loading && classes.length === 0 && !showForm && (
+            <div className="text-center py-16">
+              <Video className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+              <h3 className="text-lg font-semibold">No online classes yet</h3>
+              <p className="text-sm text-muted-foreground mt-1">Create your first virtual classroom to get started</p>
+              <Button className="mt-4 gap-2" onClick={() => setShowForm(true)}>
+                <Plus className="w-4 h-4" /> Create Class
+              </Button>
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
+    </>
   );
 }
