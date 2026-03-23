@@ -188,6 +188,7 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
   // Termination / kick states
   const [roomEnded, setRoomEnded] = useState(false);
   const [wasKicked, setWasKicked] = useState(false);
+  const [isWaitingForHost, setIsWaitingForHost] = useState(!isAdminProp);
 
   const socketRef = useRef<Socket | null>(null);
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
@@ -374,8 +375,13 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
     });
 
     socket.on("join-approved", async () => {
+      setIsWaitingForHost(false);
       socket.emit("ready-to-connect", roomId, currentUserId, currentUserName, null);
       getMedia();
+    });
+
+    socket.on("waiting-for-admin", () => {
+      setIsWaitingForHost(true);
     });
 
     socket.on("request-to-join", (u: any) =>
@@ -572,6 +578,15 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
         <Button variant="secondary" className="mt-4" onClick={onLeave}>Return to Dashboard</Button>
       </div>
     );
+  if (isWaitingForHost)
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-[#202124] text-white gap-4">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-2xl font-black uppercase tracking-widest mt-4">Waiting for Host</div>
+        <p className="text-neutral-400 text-sm">The meeting host hasn't joined yet. You'll be admitted automatically once they arrive.</p>
+        <Button variant="secondary" className="mt-4" onClick={cleanupAndLeave}>Return to Dashboard</Button>
+      </div>
+    );
 
   return (
     <div className="flex flex-col h-screen bg-[#202124] text-white overflow-hidden relative select-none font-sans">
@@ -747,7 +762,7 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
           >
             <Monitor />
           </Button>
-          {isAdmin && (
+          {isAdmin && user?.role === 'admin' && (
             <Button
               variant="destructive"
               className="rounded-full px-6 h-12 font-black tracking-tighter uppercase shadow-xl shadow-red-600/20 hover:scale-105 active:scale-95 bg-orange-600 hover:bg-orange-700"

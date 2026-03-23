@@ -4,6 +4,33 @@ const router = express.Router();
 const { pool } = require('../db.cjs');
 const crypto = require('crypto');
 
+// ─── Admin: Get all departments with courses ───
+router.get('/admin/departments-courses', async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const [rows] = await pool.execute(
+      `SELECT id, course_name, course_code, department
+       FROM courses
+       WHERE department IS NOT NULL
+       ORDER BY department, course_name`
+    );
+
+    // Group by department
+    const grouped = {};
+    rows.forEach(c => {
+      if (!grouped[c.department]) grouped[c.department] = [];
+      grouped[c.department].push({ id: c.id, name: c.course_name, code: c.course_code });
+    });
+
+    const departments = Object.entries(grouped).map(([name, courses]) => ({ name, courses }));
+    res.json(departments);
+  } catch (err) {
+    console.error('[OnlineClass] Departments error:', err);
+    res.status(500).json({ error: 'Failed to fetch departments' });
+  }
+});
+
 // ─── Teacher: Create a new online class (instant or scheduled) ───
 router.post('/online-classes', async (req, res) => {
   try {
