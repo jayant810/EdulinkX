@@ -827,14 +827,24 @@ router.get("/submissions/pending", async (req, res) => {
   const teacherId = req.user.id;
   try {
     const [rows] = await pool.execute(`
-      SELECT s.*, u.name as student, a.title as assignment, c.course_name as course, a.type, a.total_marks as max_score
+      SELECT s.id, s.assignment_id as source_id, s.student_user_id, s.submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at, 
+             u.name as student, a.title as assignment, c.course_name as course, a.type, a.max_score, 'assignment' as submit_type
       FROM assignment_submissions s
       JOIN assignments a ON a.id = s.assignment_id
       JOIN users u ON u.id = s.student_user_id
       JOIN courses c ON c.id = a.course_id
       JOIN course_teachers ct ON ct.course_id = c.id
       WHERE ct.teacher_user_id = ? AND s.status = 'submitted'
-      ORDER BY s.submitted_at ASC`, [teacherId]);
+      UNION ALL
+      SELECT s.id, s.exam_id as source_id, s.student_id as student_user_id, s.answers::text as submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at,
+             u.name as student, e.title as assignment, c.course_name as course, e.exam_type as type, e.total_marks as max_score, 'exam' as submit_type
+      FROM exam_submissions s
+      JOIN exams e ON e.id = s.exam_id
+      JOIN users u ON u.id = s.student_id
+      JOIN courses c ON c.id = e.course_id
+      JOIN course_teachers ct ON ct.course_id = c.id
+      WHERE ct.teacher_user_id = ? AND s.status = 'submitted'
+      ORDER BY submitted_at ASC`, [teacherId, teacherId]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -845,7 +855,8 @@ router.get("/submissions/graded", async (req, res) => {
   const teacherId = req.user.id;
   try {
     const [rows] = await pool.execute(`
-      SELECT s.*, u.name as student, a.title as assignment, c.course_name as course, a.type, a.total_marks as max_score, sp.student_id
+      SELECT s.id, s.assignment_id as source_id, s.student_user_id, s.submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at,
+             u.name as student, a.title as assignment, c.course_name as course, a.type, a.max_score, 'assignment' as submit_type, sp.student_id as student_identifier
       FROM assignment_submissions s
       JOIN assignments a ON a.id = s.assignment_id
       JOIN users u ON u.id = s.student_user_id
@@ -853,8 +864,21 @@ router.get("/submissions/graded", async (req, res) => {
       JOIN course_teachers ct ON ct.course_id = c.id
       LEFT JOIN student_profiles sp ON sp.user_id = u.id
       WHERE ct.teacher_user_id = ? AND s.status = 'graded'
-      ORDER BY s.submitted_at DESC`, [teacherId]);
-    res.json(rows);
+      UNION ALL
+      SELECT s.id, s.exam_id as source_id, s.student_id as student_user_id, s.answers::text as submission_text, s.file_url, s.status, s.score, s.feedback, s.submitted_at,
+             u.name as student, e.title as assignment, c.course_name as course, e.exam_type as type, e.total_marks as max_score, 'exam' as submit_type, sp.student_id as student_identifier
+      FROM exam_submissions s
+      JOIN exams e ON e.id = s.exam_id
+      JOIN users u ON u.id = s.student_id
+      JOIN courses c ON c.id = e.course_id
+      JOIN course_teachers ct ON ct.course_id = c.id
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
+      WHERE ct.teacher_user_id = ? AND s.status = 'graded'
+      ORDER BY submitted_at DESC`, [teacherId, teacherId]);
+    
+    // Map student_identifier to student_id for frontend compatibility
+    const formattedRows = rows.map(r => ({...r, student_id: r.student_identifier}));
+    res.json(formattedRows);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -863,26 +887,149 @@ router.get("/submissions/graded", async (req, res) => {
 router.post("/submissions/:id/grade", async (req, res) => {
   const teacherId = req.user.id;
   const { id } = req.params;
-  const { score, feedback } = req.body;
+  const { score, feedback, submit_type } = req.body;
 
   try {
-    // Verify ownership
-    const [[submission]] = await pool.execute(`
-      SELECT s.id FROM assignment_submissions s
-      JOIN assignments a ON a.id = s.assignment_id
-      JOIN course_teachers ct ON ct.course_id = a.course_id
-      WHERE s.id = ? AND ct.teacher_user_id = ?`, [id, teacherId]);
-
-    if (!submission) return res.status(403).json({ error: "Not authorized" });
-
-    await pool.execute(
-      "UPDATE assignment_submissions SET score = ?, status = 'graded' WHERE id = ?",
-      [score, id]
-    );
-
+    if (submit_type === 'exam') {
+      const [[submission]] = await pool.execute(`
+        SELECT s.id FROM exam_submissions s
+        JOIN exams e ON e.id = s.exam_id
+        JOIN course_teachers ct ON ct.course_id = e.course_id
+        WHERE s.id = ? AND ct.teacher_user_id = ?`, [id, teacherId]);
+      if (!submission) return res.status(403).json({ error: "Not authorized" });
+      await pool.execute(
+        "UPDATE exam_submissions SET score = ?, feedback = ?, status = 'graded' WHERE id = ?",
+        [score, feedback || null, id]
+      );
+    } else {
+      const [[submission]] = await pool.execute(`
+        SELECT s.id FROM assignment_submissions s
+        JOIN assignments a ON a.id = s.assignment_id
+        JOIN course_teachers ct ON ct.course_id = a.course_id
+        WHERE s.id = ? AND ct.teacher_user_id = ?`, [id, teacherId]);
+      if (!submission) return res.status(403).json({ error: "Not authorized" });
+      await pool.execute(
+        "UPDATE assignment_submissions SET score = ?, feedback = ?, status = 'graded' WHERE id = ?",
+        [score, feedback || null, id]
+      );
+    }
     res.json({ success: true });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+const multer = require("multer");
+const upload = multer({ dest: path.join(__dirname, '../public/uploads/') });
+
+// 11. Materials
+router.get("/materials", async (req, res) => {
+  const teacherId = req.user.id;
+  try {
+    const [rows] = await pool.execute(`
+      SELECT m.id, m.title as name, m.file_url, c.course_name as course, c.id as course_id
+      FROM course_materials m
+      JOIN courses c ON c.id = m.course_id
+      JOIN course_teachers ct ON ct.course_id = c.id
+      WHERE ct.teacher_user_id = ?
+      ORDER BY m.id DESC`, [teacherId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/materials", upload.single('file'), async (req, res) => {
+  const teacherId = req.user.id;
+  const { name, course_id, material_type } = req.body;
+  const file = req.file;
+
+  try {
+    const [[owner]] = await pool.execute("SELECT id FROM course_teachers WHERE course_id = ? AND teacher_user_id = ?", [course_id, teacherId]);
+    if (!owner) {
+      if (file) fs.unlinkSync(file.path);
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    let fileUrl = '';
+    if (file) {
+      const uploadResult = await uploadToCloudinary(file.path, 'edulinkx/materials');
+      if (uploadResult) {
+        fileUrl = uploadResult.url;
+        fs.unlinkSync(file.path);
+      } else {
+        fileUrl = '/uploads/' + file.filename;
+      }
+    }
+
+    const [result] = await pool.execute(
+      "INSERT INTO course_materials (course_id, title, file_url) VALUES (?, ?, ?) RETURNING id",
+      [course_id, name, fileUrl]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.delete("/materials/:id", async (req, res) => {
+  const teacherId = req.user.id;
+  const { id } = req.params;
+  try {
+    const [[material]] = await pool.execute(`
+      SELECT m.id FROM course_materials m
+      JOIN course_teachers ct ON ct.course_id = m.course_id
+      WHERE m.id = ? AND ct.teacher_user_id = ?`, [id, teacherId]);
+    if (!material) return res.status(403).json({ error: "Not authorized" });
+
+    await pool.execute("DELETE FROM course_materials WHERE id = ?", [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// 12. Announcements
+router.get("/announcements", async (req, res) => {
+  const teacherId = req.user.id;
+  try {
+    const [rows] = await pool.execute(`
+      SELECT a.*, c.course_name as course, TO_CHAR(a.created_at, 'Mon DD, YYYY') as date
+      FROM announcements a
+      LEFT JOIN courses c ON c.id = a.course_id
+      WHERE a.teacher_id = ?
+      ORDER BY a.created_at DESC`, [teacherId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.post("/announcements", async (req, res) => {
+  const teacherId = req.user.id;
+  const { title, content, course_id, audience, priority } = req.body;
+  try {
+    const finalCourseId = course_id === 'all' || !course_id ? null : course_id;
+    await pool.execute(
+      "INSERT INTO announcements (teacher_id, course_id, title, content, audience, priority) VALUES (?, ?, ?, ?, ?, ?)",
+      [teacherId, finalCourseId, title, content, audience, priority]
+    );
+    res.status(201).json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.delete("/announcements/:id", async (req, res) => {
+  const teacherId = req.user.id;
+  const { id } = req.params;
+  try {
+    await pool.execute("DELETE FROM announcements WHERE id = ? AND teacher_id = ?", [id, teacherId]);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
 });

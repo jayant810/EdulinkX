@@ -1,3 +1,6 @@
+import { useState, useEffect } from "react";
+import { useAuth } from "@/auth/AuthProvider";
+import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,37 +43,78 @@ const sidebarLinks = [
   { icon: Settings, label: "Settings", href: "/teacher/settings" },
 ];
 
-const announcements = [
-  {
-    id: 1,
-    title: "Mid-Term Exam Schedule Updated",
-    content: "The mid-term exam for Data Structures has been rescheduled to December 15, 2024. Please check the updated schedule.",
-    course: "Data Structures",
-    audience: "CS-A",
-    date: "Dec 9, 2024",
-    priority: "high",
-  },
-  {
-    id: 2,
-    title: "Assignment Submission Deadline Extended",
-    content: "Due to technical issues, the deadline for Algorithm Analysis Report has been extended by 2 days.",
-    course: "Data Structures",
-    audience: "All Students",
-    date: "Dec 8, 2024",
-    priority: "medium",
-  },
-  {
-    id: 3,
-    title: "Extra Lab Session",
-    content: "An extra lab session will be conducted on Saturday for students who need additional practice.",
-    course: "Data Structures Lab",
-    audience: "CS-A",
-    date: "Dec 7, 2024",
-    priority: "low",
-  },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const TeacherAnnouncements = () => {
+  const { token } = useAuth();
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({ title: "", content: "", course_id: "all", audience: "all", priority: "medium" });
+
+  const fetchAnnouncements = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/announcements`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setAnnouncements(await res.json());
+    } catch (err) {
+      toast.error("Failed to load announcements");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/courses`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setCourses(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchAnnouncements();
+      fetchCourses();
+    }
+  }, [token]);
+
+  const handlePublish = async () => {
+    if (!formData.title || !formData.content) return toast.error("Title and content are required");
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/announcements`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        toast.success("Announcement published");
+        setIsDialogOpen(false);
+        setFormData({ title: "", content: "", course_id: "all", audience: "all", priority: "medium" });
+        fetchAnnouncements();
+      }
+    } catch (err) {
+      toast.error("Error publishing announcement");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/announcements/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success("Announcement deleted");
+        fetchAnnouncements();
+      }
+    } catch (err) {
+      toast.error("Error deleting announcement");
+    }
+  };
+
   return (
     <>
       <Helmet>
@@ -82,7 +126,7 @@ const TeacherAnnouncements = () => {
         title="Announcements"
         subtitle="Create and manage announcements"
         headerActions={
-          <Dialog>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -96,25 +140,25 @@ const TeacherAnnouncements = () => {
               <div className="space-y-4 pt-4">
                 <div>
                   <label className="text-sm font-medium">Title</label>
-                  <Input placeholder="Announcement title" className="mt-1" />
+                  <Input placeholder="Announcement title" className="mt-1" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Course</label>
-                  <Select>
+                  <Select onValueChange={v => setFormData({...formData, course_id: v})} defaultValue="all">
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select course" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Courses</SelectItem>
-                      <SelectItem value="cs301">Data Structures</SelectItem>
-                      <SelectItem value="cs302">Algorithms</SelectItem>
-                      <SelectItem value="cs301l">DS Lab</SelectItem>
+                      {courses.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Target Audience</label>
-                  <Select>
+                  <Select onValueChange={v => setFormData({...formData, audience: v})} defaultValue="all">
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select audience" />
                     </SelectTrigger>
@@ -127,7 +171,7 @@ const TeacherAnnouncements = () => {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Priority</label>
-                  <Select>
+                  <Select onValueChange={v => setFormData({...formData, priority: v})} defaultValue="medium">
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
@@ -140,9 +184,9 @@ const TeacherAnnouncements = () => {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Message</label>
-                  <Textarea placeholder="Enter your announcement message..." className="mt-1" rows={4} />
+                  <Textarea placeholder="Enter your announcement message..." className="mt-1" rows={4} value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
                 </div>
-                <Button className="w-full">
+                <Button className="w-full" onClick={handlePublish}>
                   <Send className="h-4 w-4 mr-2" /> Publish Announcement
                 </Button>
               </div>
@@ -216,16 +260,13 @@ const TeacherAnnouncements = () => {
                         </div>
                         <p className="text-sm text-muted-foreground mb-3">{announcement.content}</p>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <Badge variant="secondary">{announcement.course}</Badge>
+                          <Badge variant="secondary">{announcement.course || 'All Courses'}</Badge>
                           <span>To: {announcement.audience}</span>
                           <span>• {announcement.date}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(announcement.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>

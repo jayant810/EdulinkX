@@ -1,3 +1,6 @@
+import { useState, useEffect } from "react";
+import { useAuth } from "@/auth/AuthProvider";
+import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,16 +44,88 @@ const sidebarLinks = [
   { icon: Settings, label: "Settings", href: "/teacher/settings" },
 ];
 
-const materials = [
-  { id: 1, name: "Lecture 1 - Introduction to Data Structures", type: "video", course: "Data Structures", size: "245 MB", uploaded: "Dec 1, 2024" },
-  { id: 2, name: "Binary Trees Notes", type: "pdf", course: "Data Structures", size: "2.5 MB", uploaded: "Dec 3, 2024" },
-  { id: 3, name: "Sorting Algorithms Slides", type: "pdf", course: "Algorithms", size: "5.2 MB", uploaded: "Dec 5, 2024" },
-  { id: 4, name: "Lecture 2 - Arrays and Linked Lists", type: "video", course: "Data Structures", size: "312 MB", uploaded: "Dec 6, 2024" },
-  { id: 5, name: "Assignment 1 Template", type: "document", course: "Data Structures", size: "1.1 MB", uploaded: "Dec 7, 2024" },
-  { id: 6, name: "Graph Theory Lecture", type: "video", course: "Algorithms", size: "428 MB", uploaded: "Dec 8, 2024" },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 
 const TeacherMaterials = () => {
+  const { token } = useAuth();
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadData, setUploadData] = useState({ name: "", course_id: "", material_type: "document", file: null as File | null });
+
+  const fetchMaterials = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/materials`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setMaterials(await res.json());
+    } catch (err) {
+      toast.error("Failed to load materials");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/courses`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setCourses(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchMaterials();
+      fetchCourses();
+    }
+  }, [token]);
+
+  const handleUpload = async () => {
+    if (!uploadData.name || !uploadData.course_id || !uploadData.file) {
+      return toast.error("Please fill all required fields");
+    }
+    const formData = new FormData();
+    formData.append("name", uploadData.name);
+    formData.append("course_id", uploadData.course_id);
+    formData.append("material_type", uploadData.material_type);
+    formData.append("file", uploadData.file);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/materials`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      if (res.ok) {
+        toast.success("Material uploaded successfully");
+        setIsUploadOpen(false);
+        setUploadData({ name: "", course_id: "", material_type: "document", file: null });
+        fetchMaterials();
+      } else {
+        toast.error("Upload failed");
+      }
+    } catch (err) {
+      toast.error("Error uploading material");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this material?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/materials/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        toast.success("Material deleted");
+        fetchMaterials();
+      }
+    } catch (err) {
+      toast.error("Error deleting material");
+    }
+  };
+
   return (
     <>
       <Helmet>
@@ -62,7 +137,7 @@ const TeacherMaterials = () => {
         title="Course Materials"
         subtitle="Upload and manage course content"
         headerActions={
-          <Dialog>
+          <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -76,24 +151,29 @@ const TeacherMaterials = () => {
               <div className="space-y-4 pt-4">
                 <div>
                   <label className="text-sm font-medium">Material Name</label>
-                  <Input placeholder="Enter material name" className="mt-1" />
+                  <Input 
+                    placeholder="Enter material name" 
+                    className="mt-1" 
+                    value={uploadData.name}
+                    onChange={(e) => setUploadData({...uploadData, name: e.target.value})}
+                  />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Course</label>
-                  <Select>
+                  <Select onValueChange={(v) => setUploadData({...uploadData, course_id: v})}>
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select course" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cs301">CS301 - Data Structures</SelectItem>
-                      <SelectItem value="cs302">CS302 - Algorithms</SelectItem>
-                      <SelectItem value="cs301l">CS301L - DS Lab</SelectItem>
+                      {courses.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Material Type</label>
-                  <Select>
+                  <Select defaultValue="document" onValueChange={(v) => setUploadData({...uploadData, material_type: v})}>
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
@@ -107,9 +187,9 @@ const TeacherMaterials = () => {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Upload File</label>
-                  <Input type="file" className="mt-1" />
+                  <Input type="file" className="mt-1" onChange={(e) => setUploadData({...uploadData, file: e.target.files?.[0] || null})} />
                 </div>
-                <Button className="w-full">
+                <Button className="w-full" onClick={handleUpload}>
                   <Upload className="h-4 w-4 mr-2" /> Upload
                 </Button>
               </div>
@@ -206,13 +286,13 @@ const TeacherMaterials = () => {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" onClick={() => material.file_url ? window.open((material.file_url.startsWith('http') ? '' : API_BASE) + material.file_url, '_blank') : null}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" onClick={() => material.file_url ? window.open((material.file_url.startsWith('http') ? '' : API_BASE) + material.file_url, '_blank') : null}>
                         <Download className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(material.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>

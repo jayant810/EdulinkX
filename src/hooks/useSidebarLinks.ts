@@ -56,7 +56,7 @@ export const useSidebarLinks = () => {
     { icon: ClipboardCheck, label: "Grading", href: "/teacher/grading" },
     { icon: Upload, label: "Materials", href: "/teacher/materials" },
     { icon: Bell, label: "Announcements", href: "/teacher/announcements" },
-    { icon: Calendar, label: "Holidays", href: "/admin/holidays" },
+    { icon: Calendar, label: "Holidays", href: "/teacher/holidays" },
     { icon: LayoutGrid, label: "Community", href: "/community" },
     { icon: MessageSquare, label: "Messages", href: "/teacher/messages" },
     { icon: Video, label: "Online Classes", href: "/teacher/online-classes" },

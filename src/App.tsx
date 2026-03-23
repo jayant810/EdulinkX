@@ -45,6 +45,7 @@ import TeacherExamCreate from "./pages/teacher/ExamCreate";
 import TeacherGrading from "./pages/teacher/Grading";
 import TeacherMaterials from "./pages/teacher/Materials";
 import TeacherAnnouncements from "./pages/teacher/Announcements";
+import TeacherHolidays from "./pages/teacher/Holidays";
 import TeacherMessages from "./pages/teacher/Messages";
 import TeacherSettings from "./pages/teacher/Settings";
 import ManageCourse from "@/pages/teacher/ManageCourse";
@@ -346,6 +347,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["teacher"]}>
                     <TeacherGrading />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/teacher/holidays"
+                element={
+                  <ProtectedRoute allowedRoles={["teacher"]}>
+                    <TeacherHolidays />
                   </ProtectedRoute>
                 }
               />

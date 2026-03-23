@@ -457,6 +457,17 @@ const initializeDatabase = async () => {
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS audience_target TEXT;
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS recording_url TEXT;
 
+      CREATE TABLE IF NOT EXISTS announcements (
+        id SERIAL PRIMARY KEY,
+        teacher_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        course_id INT REFERENCES courses(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        content TEXT NOT NULL,
+        audience VARCHAR(50) DEFAULT 'all',
+        priority VARCHAR(20) DEFAULT 'medium',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       -- ALTER TABLES IF THEY ALREADY EXIST TO ADD NEW COLUMNS
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS answer_key_url TEXT;

@@ -81,7 +81,7 @@ const TeacherGrading = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(gradeData)
+        body: JSON.stringify({ ...gradeData, submit_type: selectedSubmission.submit_type })
       });
 
       if (!res.ok) throw new Error("Failed to submit grade");
