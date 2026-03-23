@@ -138,32 +138,54 @@ router.get('/student/online-classes', async (req, res) => {
   try {
     if (req.user.role !== 'student') return res.status(403).json({ error: 'Forbidden' });
 
+    const [studentCourses] = await pool.execute(
+      `SELECT c.id, c.department FROM courses c JOIN course_students cs ON c.id = cs.course_id WHERE cs.student_user_id = ?`,
+      [req.user.id]
+    );
+    const myCourseIds = studentCourses.map(c => c.id);
+    const myDepartments = [...new Set(studentCourses.map(c => c.department).filter(Boolean))];
+
     const [rows] = await pool.execute(
       `SELECT oc.*, c.course_name, c.course_code, c.department, u.name AS teacher_name
        FROM online_classes oc
        LEFT JOIN courses c ON oc.course_id = c.id
        JOIN users u ON oc.teacher_user_id = u.id
        WHERE oc.status IN ('live', 'scheduled')
-         AND (
-           oc.audience_type = 'everyone'
-           OR oc.audience_type = 'students_only'
-           OR oc.audience_type = 'teachers_and_students'
-           OR (oc.audience_type = 'course' AND (
-             oc.course_id IS NULL OR oc.course_id IN (
-               SELECT cs.course_id FROM course_students cs WHERE cs.student_user_id = ?
-             )
-           ))
-           OR (oc.audience_type = 'department' AND c.department IN (
-             SELECT DISTINCT c2.department FROM courses c2
-             JOIN course_students cs2 ON cs2.course_id = c2.id
-             WHERE cs2.student_user_id = ?
-           ))
-         )
-       ORDER BY CASE WHEN oc.status = 'live' THEN 0 ELSE 1 END, oc.scheduled_at ASC`,
-      [req.user.id, req.user.id]
+       ORDER BY CASE WHEN oc.status = 'live' THEN 0 ELSE 1 END, oc.scheduled_at ASC`
     );
 
-    res.json(rows);
+    const visibleRows = rows.filter(oc => {
+      if (oc.audience_type === 'course' && oc.created_by_role === 'teacher') {
+         return !oc.course_id || myCourseIds.includes(oc.course_id);
+      }
+      if (oc.audience_type === 'everyone' || oc.audience_type === 'students_only' || oc.audience_type === 'teachers_and_students') {
+        return true;
+      }
+      if (oc.audience_type === 'department' && oc.audience_target) {
+        try {
+          const target = JSON.parse(oc.audience_target);
+          let deptsArray = Array.isArray(target) ? target : (target && target.depts) ? target.depts : [];
+          let userType = Array.isArray(target) ? 'both' : (target && target.userType) ? target.userType : 'both';
+
+          if (userType === 'teachers') return false;
+          
+          return deptsArray.some(d => {
+            if (myDepartments.includes(d.department)) {
+               if (d.courseIds === 'all') return true;
+               if (Array.isArray(d.courseIds)) {
+                 return d.courseIds.some(cid => myCourseIds.includes(cid));
+               }
+            }
+            return false;
+          });
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    });
+
+    res.json(visibleRows);
   } catch (err) {
     console.error('[OnlineClass] Student list error:', err);
     res.status(500).json({ error: 'Failed to fetch classes' });
@@ -259,6 +281,13 @@ router.get('/teacher/online-classes/visible', async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Forbidden' });
 
+    const [teacherCourses] = await pool.execute(
+      `SELECT id, department FROM courses WHERE teacher_user_id = ?`,
+      [req.user.id]
+    );
+    const myCourseIds = teacherCourses.map(c => c.id);
+    const myDepartments = [...new Set(teacherCourses.map(c => c.department).filter(Boolean))];
+
     const [rows] = await pool.execute(
       `SELECT oc.*, c.course_name, c.course_code, c.department, u.name AS teacher_name
        FROM online_classes oc
@@ -266,18 +295,72 @@ router.get('/teacher/online-classes/visible', async (req, res) => {
        JOIN users u ON oc.teacher_user_id = u.id
        WHERE oc.status IN ('live', 'scheduled')
          AND oc.created_by_role = 'admin'
-         AND (
-           oc.audience_type = 'everyone'
-           OR oc.audience_type = 'teachers_only'
-           OR oc.audience_type = 'teachers_and_students'
-         )
        ORDER BY CASE WHEN oc.status = 'live' THEN 0 ELSE 1 END, oc.scheduled_at ASC`
     );
 
-    res.json(rows);
+    const visibleRows = rows.filter(oc => {
+      if (oc.audience_type === 'everyone' || oc.audience_type === 'teachers_only' || oc.audience_type === 'teachers_and_students') {
+        return true;
+      }
+      if (oc.audience_type === 'department' && oc.audience_target) {
+        try {
+          const target = JSON.parse(oc.audience_target);
+          let deptsArray = Array.isArray(target) ? target : (target && target.depts) ? target.depts : [];
+          let userType = Array.isArray(target) ? 'both' : (target && target.userType) ? target.userType : 'both';
+
+          if (userType === 'students') return false;
+
+          return deptsArray.some(d => {
+            if (myDepartments.includes(d.department)) {
+               if (d.courseIds === 'all') return true;
+               if (Array.isArray(d.courseIds)) {
+                 return d.courseIds.some(cid => myCourseIds.includes(cid));
+               }
+            }
+            return false;
+          });
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    });
+
+    res.json(visibleRows);
   } catch (err) {
     console.error('[OnlineClass] Teacher visible list error:', err);
     res.status(500).json({ error: 'Failed to fetch classes' });
+  }
+});
+
+// ─── Bot/Admin: Upload Meeting Recording ───
+const { cloudinaryUpload } = require('../utils/cloudinary.cjs');
+
+router.post('/admin/recordings', cloudinaryUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const roomId = req.body.roomId;
+    if (!roomId) return res.status(400).json({ error: 'Missing roomId' });
+
+    // Validate the token context belongs to personnel allowed to authorize a bot recording
+    if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Capture the generated Cloudinary Path
+    const recordingUrl = req.file.path;
+
+    await pool.execute(
+      `UPDATE online_classes SET recording_url = ? WHERE room_id = ?`,
+      [recordingUrl, roomId]
+    );
+
+    console.log(`[Recording] Successfully saved for room ${roomId}: ${recordingUrl}`);
+    res.json({ url: recordingUrl });
+  } catch (err) {
+    console.error('[OnlineClass] Recording upload error:', err);
+    res.status(500).json({ error: 'Failed to save recording' });
   }
 });
 

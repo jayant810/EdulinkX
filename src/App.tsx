@@ -77,6 +77,7 @@ import CommunityFeed from "./pages/shared/CommunityFeed";
 import AskQuestion from "./pages/shared/AskQuestion";
 import QuestionDetail from "./pages/shared/QuestionDetail";
 import Leaderboard from "./pages/shared/Leaderboard";
+import BotRoom from "./pages/shared/BotRoom";
 
 const queryClient = new QueryClient();
 
@@ -519,6 +520,9 @@ const App = () => (
               path="/teacher/courses/:courseId" 
               element={<ManageCourse />} 
               />
+
+              {/* Server Bot Route (Headless Recording) */}
+              <Route path="/bot-room/:roomId" element={<BotRoom />} />
 
                               {/* 404 */}
                               <Route path="*" element={<NotFound />} />

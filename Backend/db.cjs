@@ -455,6 +455,7 @@ const initializeDatabase = async () => {
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS created_by_role VARCHAR(20) DEFAULT 'teacher';
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS audience_type VARCHAR(50) DEFAULT 'course';
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS audience_target TEXT;
+      ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS recording_url TEXT;
 
       -- ALTER TABLES IF THEY ALREADY EXIST TO ADD NEW COLUMNS
       ALTER TABLE assignments ADD COLUMN IF NOT EXISTS grading_method VARCHAR(20) DEFAULT 'manual';

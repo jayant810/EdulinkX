@@ -15,7 +15,7 @@ import {
 import {
   Video, Radio, CalendarClock, CheckCircle2, Users, Building2,
   BookOpen, Clock, Square, LogIn, Plus, Play, Calendar,
-  AlertTriangle, X, ChevronDown
+  AlertTriangle, X, ChevronDown, Maximize, Download, Rewind, FastForward, PlayCircle, PauseCircle
 } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import MeetingRoom from "@/components/MeetingRoom";
@@ -40,6 +40,7 @@ interface OnlineClass {
   ended_at: string | null;
   created_at: string;
   created_by_role: string | null;
+  recording_url?: string | null;
 }
 
 interface Course {
@@ -76,6 +77,41 @@ export default function AdminOnlineClasses() {
   const [selectedDepts, setSelectedDepts] = useState<SelectedDept[]>([]);
   const [deptDropdownOpen, setDeptDropdownOpen] = useState(false);
   const [activeDeptForCourses, setActiveDeptForCourses] = useState<string | null>(null);
+  const [deptUserType, setDeptUserType] = useState<"both" | "students" | "teachers">("both");
+
+  // Video Player Overlay State
+  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) videoRef.current.pause();
+    else videoRef.current.play();
+    setIsPlaying(!isPlaying);
+  };
+  
+  const skip = (seconds: number) => {
+    if (videoRef.current) videoRef.current.currentTime += seconds;
+  };
+  
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      videoRef.current?.parentElement?.requestFullscreen().catch(err => console.log(err));
+    } else {
+      document.exitFullscreen().catch(err => console.log(err));
+    }
+  };
+
+  const downloadVideo = () => {
+    if (!playingVideoUrl) return;
+    const a = document.createElement("a");
+    a.href = playingVideoUrl;
+    a.download = "meeting-recording.webm";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   // Socket ref for force-ending rooms
   const socketRef = useRef<Socket | null>(null);
@@ -133,7 +169,9 @@ export default function AdminOnlineClasses() {
 
   const createClass = async () => {
     if (!title.trim()) return;
-    const target = (audienceType === "department" || audienceType === "course") ? selectedDepts : null;
+    const target = (audienceType === "department" || audienceType === "course") 
+      ? { depts: selectedDepts, userType: deptUserType } 
+      : null;
     try {
       const res = await fetch(`${API_BASE}/api/admin/online-classes`, {
         method: "POST",
@@ -295,7 +333,6 @@ export default function AdminOnlineClasses() {
                       <SelectItem value="everyone">Everyone (All users)</SelectItem>
                       <SelectItem value="teachers_only">Teachers Only</SelectItem>
                       <SelectItem value="students_only">Students Only</SelectItem>
-                      <SelectItem value="teachers_and_students">Teachers & Students</SelectItem>
                       <SelectItem value="department">Specific Departments / Courses</SelectItem>
                     </SelectContent>
                   </Select>
@@ -304,6 +341,18 @@ export default function AdminOnlineClasses() {
                 {/* Department/Course Multi-Selector */}
                 {needsDeptSelector && (
                   <div className="space-y-3">
+                    <div className="mb-4">
+                      <label className="text-sm font-medium text-muted-foreground mb-1 block">Within these departments/courses, who can join?</label>
+                      <Select value={deptUserType} onValueChange={(v: "both" | "students" | "teachers") => setDeptUserType(v)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="both">Both Teachers & Students</SelectItem>
+                          <SelectItem value="students">Only Students</SelectItem>
+                          <SelectItem value="teachers">Only Teachers</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Selected departments as chips */}
                     {selectedDepts.length > 0 && (
                       <div className="flex flex-wrap gap-2">
@@ -548,6 +597,11 @@ export default function AdminOnlineClasses() {
                                 </Button>
                               </div>
                             )}
+                            {cls.status === "ended" && cls.recording_url && (
+                              <Button size="sm" variant="outline" className="gap-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 mt-1" onClick={() => setPlayingVideoUrl(cls.recording_url!)}>
+                                <Play className="w-3.5 h-3.5" /> View Recording
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -558,6 +612,52 @@ export default function AdminOnlineClasses() {
             </CardContent>
           </Card>
         </div>
+
+          {/* Custom Video Player Overlay */}
+          {playingVideoUrl && (
+            <div className="fixed inset-0 z-[100] bg-black/90 flex flex-col items-center justify-center p-4">
+              <div className="relative w-full max-w-5xl bg-black rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 group">
+                <button
+                  onClick={() => setPlayingVideoUrl(null)}
+                  className="absolute top-4 right-4 z-20 p-2 bg-black/50 hover:bg-red-600/80 rounded-full text-white transition disabled:opacity-50"
+                  title="Close Media Player"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <video
+                  ref={videoRef}
+                  src={playingVideoUrl}
+                  className="w-full aspect-video object-contain"
+                  autoPlay
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onEnded={() => setIsPlaying(false)}
+                  onClick={togglePlay}
+                  controls={true}
+                />
+                
+                {/* Custom Overlay Controls */}
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-black/60 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => skip(-5)} className="text-white hover:text-blue-400 p-2 transition-colors" title="Rewind 5s">
+                    <Rewind className="w-6 h-6" />
+                  </button>
+                  <button onClick={togglePlay} className="text-white hover:scale-110 active:scale-95 transition-transform" title={isPlaying ? "Pause" : "Play"}>
+                    {isPlaying ? <PauseCircle className="w-10 h-10 text-white" /> : <PlayCircle className="w-10 h-10 text-blue-500" />}
+                  </button>
+                  <button onClick={() => skip(5)} className="text-white hover:text-blue-400 p-2 transition-colors" title="Forward 5s">
+                    <FastForward className="w-6 h-6" />
+                  </button>
+                  <div className="w-px h-8 bg-white/20 mx-2" />
+                  <button onClick={downloadVideo} className="text-white hover:text-blue-400 p-2 transition-colors" title="Download Recording">
+                    <Download className="w-5 h-5" />
+                  </button>
+                  <button onClick={toggleFullscreen} className="text-white hover:text-blue-400 p-2 transition-colors" title="Fullscreen">
+                    <Maximize className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
       </DashboardLayout>
     </>
   );

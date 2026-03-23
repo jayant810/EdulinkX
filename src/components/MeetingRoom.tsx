@@ -307,7 +307,7 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
       setLocalStream(stream);
       // Default: mic and camera OFF
       stream.getAudioTracks().forEach((t) => (t.enabled = false));
-      stream.getVideoTracks().forEach((t) => (t.enabled = false));
+      stream.getVideoTracks().forEach((t) => { t.enabled = false; t.stop(); }); // Force hardware light off initially
       Object.entries(peersRef.current).forEach(([, pc]) => {
         if (pc.signalingState !== "closed") stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       });
@@ -492,13 +492,38 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
     }
   };
 
-  const toggleVideo = () => {
-    const t = localStreamRef.current?.getVideoTracks()[0];
-    if (t) {
-      t.enabled = !t.enabled;
-      const next = !t.enabled;
-      setIsVideoOff(next);
-      socketRef.current?.emit("toggle-video", roomId, currentUserId, next);
+  const toggleVideo = async () => {
+    if (isVideoOff) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.7777 } 
+        });
+        const newTrack = stream.getVideoTracks()[0];
+        
+        if (localStreamRef.current) {
+          localStreamRef.current.getVideoTracks().forEach(t => localStreamRef.current?.removeTrack(t));
+          localStreamRef.current.addTrack(newTrack);
+          setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+        }
+
+        Object.values(peersRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(newTrack);
+        });
+
+        setIsVideoOff(false);
+        socketRef.current?.emit("toggle-video", roomId, currentUserId, false);
+      } catch (err) {
+        console.error("Camera failed to restart", err);
+      }
+    } else {
+      localStreamRef.current?.getVideoTracks().forEach(t => {
+        t.enabled = false;
+        t.stop(); // Turn off hardware light
+        localStreamRef.current?.removeTrack(t);
+      });
+      setIsVideoOff(true);
+      socketRef.current?.emit("toggle-video", roomId, currentUserId, true);
     }
   };
 
@@ -762,6 +787,20 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
           >
             <Monitor />
           </Button>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              className="rounded-full px-6 h-12 font-bold tracking-tight shadow-xl bg-[#3c4043] border-white/20 text-white hover:bg-blue-600 hover:border-transparent transition-all"
+              onClick={() => {
+                if (confirm("Leave but keep room running? This will start an auto-recording of the session.")) {
+                  socketRef.current?.emit("resume-for-students", roomId);
+                  cleanupAndLeave();
+                }
+              }}
+            >
+              Resume for Students
+            </Button>
+          )}
           {isAdmin && user?.role === 'admin' && (
             <Button
               variant="destructive"
