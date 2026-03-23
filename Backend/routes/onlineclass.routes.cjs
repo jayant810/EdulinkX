@@ -336,7 +336,7 @@ router.get('/teacher/online-classes/visible', async (req, res) => {
 // ─── Bot/Admin: Upload Meeting Recording ───
 const { cloudinaryUpload } = require('../utils/cloudinary.cjs');
 
-router.post('/admin/recordings', cloudinaryUpload.single('file'), async (req, res) => {
+router.post('/online-classes/recordings', cloudinaryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 

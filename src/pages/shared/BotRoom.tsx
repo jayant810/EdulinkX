@@ -190,7 +190,7 @@ export default function BotRoom() {
         
         try {
           console.log("[BotRoom] Uploading securely to Backend API...");
-          await fetch(`${API_BASE}/api/admin/recordings`, { 
+          await fetch(`${API_BASE}/api/online-classes/recordings`, { 
             method: "POST", 
             headers: { "Authorization": `Bearer ${adminToken}` },
             body: fd 
