@@ -793,7 +793,8 @@ export default function MeetingRoom({ roomId, isAdmin: isAdminProp = false, onLe
               className="rounded-full px-6 h-12 font-bold tracking-tight shadow-xl bg-[#3c4043] border-white/20 text-white hover:bg-blue-600 hover:border-transparent transition-all"
               onClick={() => {
                 if (confirm("Leave but keep room running? This will start an auto-recording of the session.")) {
-                  socketRef.current?.emit("resume-for-students", roomId);
+                  const currentToken = localStorage.getItem("token") || "";
+                  socketRef.current?.emit("resume-for-students", roomId, currentToken);
                   cleanupAndLeave();
                 }
               }}
