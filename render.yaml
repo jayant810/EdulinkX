@@ -16,4 +16,4 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: NODE_VERSION
-        value: 20.0.0
+        value: 20.18.0
