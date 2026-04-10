@@ -41,9 +41,33 @@ pool.execute = async (sql, params = []) => {
   pgSql = pgSql.replace(/JSON_EXTRACT/gi, 'JSONB_EXTRACT_PATH');
   pgSql = pgSql.replace(/IF\((.*?),(.*?),(.*?)\)/gi, 'CASE WHEN $1 THEN $2 ELSE $3 END');
   
+  // 3. Data type fixes for subqueries and counts
+  // PostgreSQL returns BIGINT for COUNT(*), which node-pg returns as string.
+  // We don't change the SQL here, but we'll cast in the routes or handled by pool.execute
+  
   try {
     const result = await pool.query(pgSql, params);
-    return [result.rows, result.fields];
+    
+    // Convert stringified numbers back to numbers for common count fields
+    const rows = result.rows.map(row => {
+      const newRow = { ...row };
+      for (const key in newRow) {
+        if (typeof newRow[key] === 'string' && 
+            (key.toLowerCase().includes('count') || 
+             key.toLowerCase().includes('total') || 
+             key.toLowerCase().includes('materials') ||
+             key.toLowerCase().includes('students') ||
+             key.toLowerCase().includes('lectures') ||
+             key.toLowerCase().includes('graded') ||
+             key.toLowerCase().includes('submitted'))) {
+          const num = parseInt(newRow[key]);
+          if (!isNaN(num)) newRow[key] = num;
+        }
+      }
+      return newRow;
+    });
+
+    return [rows, result.fields];
   } catch (err) {
     console.error("PostgreSQL Query Error:", err.message);
     throw err;

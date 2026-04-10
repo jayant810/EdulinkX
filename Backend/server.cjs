@@ -28,7 +28,12 @@ if (process.env.REDIS_URL || process.env.USE_REDIS === 'true') {
   });
 }
 
-app.use(cors());
+app.use(cors({
+  origin: ["https://edulinkx.jayantsadhwani.me", "http://localhost:5173"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
 app.use(express.json());
 const path = require('path');
 // const fs = require('fs');
@@ -116,6 +121,14 @@ app.use("/api/teacher", verifyToken, gradingRoutes);
 app.use("/api/hod", verifyToken, hodRoutes);
 app.use("/api", verifyToken, onlineClassRoutes);
 
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('[Global Error Handler]:', err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error',
+    path: req.path
+  });
+});
 
 // Socket.io logic
 io.on("connection", (socket) => {
