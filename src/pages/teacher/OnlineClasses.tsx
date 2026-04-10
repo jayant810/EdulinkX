@@ -42,6 +42,7 @@ interface OnlineClass {
   started_at: string | null;
   ended_at: string | null;
   created_at: string;
+  gmeet_link?: string | null;
 }
 
 interface Course {
@@ -251,6 +252,16 @@ export default function TeacherOnlineClasses() {
                           <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                             <Clock className="w-3 h-3" /> Started {cls.started_at ? new Date(cls.started_at).toLocaleTimeString() : "now"}
                           </p>
+                          {cls.gmeet_link && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 mt-2 text-blue-600 font-medium text-xs gap-1"
+                              onClick={() => window.open(cls.gmeet_link!, "_blank")}
+                            >
+                              <Video className="w-3 h-3" /> Host GMeet (External)
+                            </Button>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <Button size="sm" className="gap-1" onClick={() => setActiveRoom({ roomId: cls.room_id, title: cls.title })}>
@@ -286,6 +297,16 @@ export default function TeacherOnlineClasses() {
                             <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                               <Calendar className="w-3 h-3" /> {new Date(cls.scheduled_at).toLocaleString()}
                             </p>
+                          )}
+                          {cls.gmeet_link && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 mt-2 text-blue-600 font-medium text-xs gap-1"
+                              onClick={() => window.open(cls.gmeet_link!, "_blank")}
+                            >
+                              <Video className="w-3 h-3" /> Join GMeet (External)
+                            </Button>
                           )}
                         </div>
                         <div className="flex gap-2">

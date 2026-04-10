@@ -15,7 +15,88 @@ if (dns.setDefaultResultOrder) {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'jwtscrt';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:4000/api/auth/google-callback";
+
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+
+// --- Google Connect (OAuth for Calendar/Meet) ---
+
+// Get Auth URL
+router.get("/connect-google", (req, res) => {
+  const authHeader = req.headers?.authorization;
+  if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+
+  const scopes = [
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile'
+  ];
+
+  const state = authHeader.split(' ')[1]; // Pass JWT as state to verify user on callback
+
+  const url = googleClient.generateAuthUrl({
+    access_type: 'offline',
+    scope: scopes,
+    state: state,
+    prompt: 'consent' // Force refresh token
+  });
+
+  res.json({ url });
+});
+
+const { encrypt } = require("../utils/crypto.cjs");
+
+// OAuth Callback
+router.get("/google-callback", async (req, res) => {
+  const { code, state: token } = req.query;
+
+  if (!code || !token) {
+    return res.status(400).send("Missing code or state");
+  }
+
+  try {
+    // 1. Verify the JWT from state to get user ID
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
+
+    // 2. Exchange code for tokens
+    const { tokens } = await googleClient.getToken(code);
+    
+    // Encrypt refresh token if present
+    const encryptedRefreshToken = tokens.refresh_token ? encrypt(tokens.refresh_token) : null;
+
+    // 3. Store tokens in DB
+    await pool.execute(
+      "UPDATE users SET google_refresh_token = ?, google_access_token = ?, google_token_expiry = ? WHERE id = ?",
+      [encryptedRefreshToken, tokens.access_token, tokens.expiry_date, userId]
+    );
+
+    // 4. Redirect back to frontend
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/teacher/settings?google_connected=success`);
+  } catch (err) {
+    console.error("[Google Callback] Error:", err.message);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/teacher/settings?google_connected=error&message=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// Check Status
+router.get("/google-status", async (req, res) => {
+  const authHeader = req.headers?.authorization;
+  if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+  
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const [rows] = await pool.execute("SELECT google_refresh_token FROM users WHERE id = ?", [decoded.id]);
+    
+    res.json({ connected: !!(rows[0] && rows[0].google_refresh_token) });
+  } catch (err) {
+    res.status(401).json({ error: "Invalid token" });
+  }
+});
 
 // Email Transporter (Configure with your SMTP details in .env)
 const transporter = nodemailer.createTransport({

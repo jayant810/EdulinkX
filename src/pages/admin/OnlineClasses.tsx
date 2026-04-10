@@ -41,6 +41,7 @@ interface OnlineClass {
   created_at: string;
   created_by_role: string | null;
   recording_url?: string | null;
+  gmeet_link?: string | null;
 }
 
 interface Course {
@@ -182,6 +183,7 @@ export default function AdminOnlineClasses() {
           audienceTarget: target,
           scheduledAt: isInstant ? null : scheduledAt || null,
           instant: isInstant,
+          hostTeacherId: hostTeacherId ? parseInt(hostTeacherId) : null,
         }),
       });
       if (res.ok) {
@@ -323,6 +325,25 @@ export default function AdminOnlineClasses() {
                   </Button>
                 </div>
                 <Input placeholder="Meeting title (e.g. Faculty Meeting, Department Sync)" value={title} onChange={e => setTitle(e.target.value)} />
+
+                {/* Teacher Host Selector */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block">Host Teacher (to create Google Meet link)</label>
+                  <Select value={hostTeacherId} onValueChange={setHostTeacherId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a teacher who has connected Google" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No GMeet (Internal Only)</SelectItem>
+                      {teachers.map(t => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name} ({t.email})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1 italic">
+                    Only teachers who have connected their Google account are shown here.
+                  </p>
+                </div>
 
                 {/* Audience Type */}
                 <div>
@@ -542,6 +563,7 @@ export default function AdminOnlineClasses() {
                         <th className="pb-3 font-medium">Created By</th>
                         <th className="pb-3 font-medium">Department</th>
                         <th className="pb-3 font-medium">Audience</th>
+                        <th className="pb-3 font-medium">GMeet</th>
                         <th className="pb-3 font-medium">Status</th>
                         <th className="pb-3 font-medium">Time</th>
                         <th className="pb-3 font-medium">Actions</th>
@@ -565,6 +587,20 @@ export default function AdminOnlineClasses() {
                             </span>
                           </td>
                           <td className="py-3 text-sm text-muted-foreground">{audienceLabel(cls.audience_type)}</td>
+                          <td className="py-3">
+                            {cls.gmeet_link ? (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-7 text-[10px] gap-1 px-2 border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100"
+                                onClick={() => window.open(cls.gmeet_link!, "_blank")}
+                              >
+                                <Video className="w-3 h-3" /> External GMeet
+                              </Button>
+                            ) : (
+                              <span className="text-muted-foreground text-xs italic">Internal Only</span>
+                            )}
+                          </td>
                           <td className="py-3">
                             {cls.status === "live" && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs font-medium">

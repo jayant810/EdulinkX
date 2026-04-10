@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db.cjs');
 const crypto = require('crypto');
+const { createMeetEvent, deleteMeetEvent } = require('../utils/googleCalendar.cjs');
 
 // ─── Admin: Get all departments with courses ───
 router.get('/admin/departments-courses', async (req, res) => {
@@ -36,17 +37,37 @@ router.post('/online-classes', async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can create classes' });
 
-    const { title, courseId, scheduledAt, instant } = req.body;
+    const { title, courseId, scheduledAt, instant, duration = 60 } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
     const roomId = crypto.randomUUID();
     const status = instant ? 'live' : 'scheduled';
     const startedAt = instant ? new Date().toISOString() : null;
 
+    let gmeetLink = null;
+    let googleEventId = null;
+
+    // Create GMeet via teacher's Google Account
+    try {
+      const startDateTime = scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString();
+      const endDateTime = new Date(new Date(startDateTime).getTime() + duration * 60000).toISOString();
+      
+      const meetData = await createMeetEvent(req.user.id, {
+        title: `EdulinkX: ${title}`,
+        start: startDateTime,
+        end: endDateTime
+      });
+
+      gmeetLink = meetData.meetLink;
+      googleEventId = meetData.eventId;
+    } catch (meetErr) {
+      console.warn(`[GMeet] Failed to create meeting:`, meetErr.message);
+    }
+
     const [rows] = await pool.execute(
-      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at, created_by_role, audience_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'course') RETURNING *`,
-      [roomId, title, req.user.id, courseId || null, status, scheduledAt || null, startedAt]
+      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at, created_by_role, audience_type, gmeet_link, google_event_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'teacher', 'course', ?, ?) RETURNING *`,
+      [roomId, title, req.user.id, courseId || null, status, scheduledAt || null, startedAt, gmeetLink, googleEventId]
     );
 
     res.status(201).json(rows[0]);
@@ -120,12 +141,26 @@ router.delete('/online-classes/:id', async (req, res) => {
   try {
     if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Forbidden' });
 
-    const [rows] = await pool.execute(
-      `DELETE FROM online_classes WHERE id = ? AND teacher_user_id = ? AND status = 'scheduled' RETURNING id`,
+    // Get event ID to delete from Google
+    const [existing] = await pool.execute(
+      "SELECT google_event_id FROM online_classes WHERE id = ? AND teacher_user_id = ?",
       [req.params.id, req.user.id]
     );
 
-    if (rows.length === 0) return res.status(404).json({ error: 'Class not found or cannot be deleted' });
+    if (existing && existing[0] && existing[0].google_event_id) {
+      try {
+        await deleteMeetEvent(req.user.id, existing[0].google_event_id);
+      } catch (err) {
+        console.warn('[GMeet] Failed to delete event:', err.message);
+      }
+    }
+
+    const [rows] = await pool.execute(
+      `DELETE FROM online_classes WHERE id = ? AND teacher_user_id = ? RETURNING id`,
+      [req.params.id, req.user.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Class not found' });
     res.json({ message: 'Class deleted' });
   } catch (err) {
     console.error('[OnlineClass] Delete error:', err);
@@ -194,57 +229,20 @@ router.get('/student/online-classes', async (req, res) => {
 
 // ─── Admin: List ALL classes with full metadata ───
 router.get('/admin/online-classes', async (req, res) => {
+...
+});
+
+// ─── Admin: Search for teachers (to assign as GMeet hosts) ───
+router.get('/admin/teachers-search', async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
-
+    
     const [rows] = await pool.execute(
-      `SELECT oc.*, c.course_name, c.course_code, c.department, u.name AS teacher_name
-       FROM online_classes oc
-       LEFT JOIN courses c ON oc.course_id = c.id
-       LEFT JOIN users u ON oc.teacher_user_id = u.id
-       ORDER BY oc.created_at DESC`
+      "SELECT id, name, email FROM users WHERE role = 'teacher' AND google_refresh_token IS NOT NULL"
     );
-
     res.json(rows);
   } catch (err) {
-    console.error('[OnlineClass] Admin list error:', err);
-    res.status(500).json({ error: 'Failed to fetch classes' });
-  }
-});
-
-// ─── Admin: Force-end any live class ───
-router.patch('/admin/online-classes/:id/end', async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
-
-    const [rows] = await pool.execute(
-      `UPDATE online_classes SET status = 'ended', ended_at = NOW()
-       WHERE id = ? AND status = 'live' RETURNING *`,
-      [req.params.id]
-    );
-
-    if (rows.length === 0) return res.status(404).json({ error: 'Class not found or not live' });
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('[OnlineClass] Admin end error:', err);
-    res.status(500).json({ error: 'Failed to end class' });
-  }
-});
-
-// ─── Admin: End ALL live meetings ───
-router.patch('/admin/online-classes/end-all', async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
-
-    const [rows] = await pool.execute(
-      `UPDATE online_classes SET status = 'ended', ended_at = NOW()
-       WHERE status = 'live' RETURNING id, room_id`
-    );
-
-    res.json({ ended: rows.length, rooms: rows.map(r => r.room_id) });
-  } catch (err) {
-    console.error('[OnlineClass] Admin end-all error:', err);
-    res.status(500).json({ error: 'Failed to end all classes' });
+    res.status(500).json({ error: 'Failed to search teachers' });
   }
 });
 
@@ -253,20 +251,42 @@ router.post('/admin/online-classes', async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
-    const { title, audienceType, audienceTarget, scheduledAt, instant } = req.body;
+    const { title, audienceType, audienceTarget, scheduledAt, instant, hostTeacherId, duration = 60 } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
     if (!audienceType) return res.status(400).json({ error: 'Audience type is required' });
 
     const roomId = crypto.randomUUID();
     const status = instant ? 'live' : 'scheduled';
     const startedAt = instant ? new Date().toISOString() : null;
-    // audienceTarget is a JSON string of department names or course IDs
     const targetStr = audienceTarget ? JSON.stringify(audienceTarget) : null;
 
+    let gmeetLink = null;
+    let googleEventId = null;
+    const finalTeacherId = hostTeacherId || req.user.id;
+
+    // If a specific teacher was chosen as host, try to create GMeet
+    if (hostTeacherId) {
+      try {
+        const startDateTime = scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString();
+        const endDateTime = new Date(new Date(startDateTime).getTime() + duration * 60000).toISOString();
+        
+        const meetData = await createMeetEvent(hostTeacherId, {
+          title: `EdulinkX Admin Meeting: ${title}`,
+          start: startDateTime,
+          end: endDateTime
+        });
+
+        gmeetLink = meetData.meetLink;
+        googleEventId = meetData.eventId;
+      } catch (meetErr) {
+        console.warn(`[GMeet Admin] Failed to create meeting:`, meetErr.message);
+      }
+    }
+
     const [rows] = await pool.execute(
-      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at, created_by_role, audience_type, audience_target)
-       VALUES (?, ?, ?, NULL, ?, ?, ?, 'admin', ?, ?) RETURNING *`,
-      [roomId, title, req.user.id, status, scheduledAt || null, startedAt, audienceType, targetStr]
+      `INSERT INTO online_classes (room_id, title, teacher_user_id, course_id, status, scheduled_at, started_at, created_by_role, audience_type, audience_target, gmeet_link, google_event_id)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, 'admin', ?, ?, ?, ?) RETURNING *`,
+      [roomId, title, finalTeacherId, status, scheduledAt || null, startedAt, audienceType, targetStr, gmeetLink, googleEventId]
     );
 
     res.status(201).json(rows[0]);

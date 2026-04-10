@@ -132,6 +132,9 @@ const initializeDatabase = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_token VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_expires TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_refresh_token TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_access_token TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_token_expiry BIGINT;
 
       CREATE TABLE IF NOT EXISTS user_settings (
         user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -456,6 +459,8 @@ const initializeDatabase = async () => {
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS audience_type VARCHAR(50) DEFAULT 'course';
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS audience_target TEXT;
       ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS recording_url TEXT;
+      ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS gmeet_link TEXT;
+      ALTER TABLE online_classes ADD COLUMN IF NOT EXISTS google_event_id TEXT;
 
       CREATE TABLE IF NOT EXISTS announcements (
         id SERIAL PRIMARY KEY,

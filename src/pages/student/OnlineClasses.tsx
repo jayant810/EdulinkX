@@ -21,6 +21,7 @@ interface OnlineClass {
   status: string;
   scheduled_at: string | null;
   started_at: string | null;
+  gmeet_link?: string | null;
 }
 
 export default function StudentOnlineClasses() {
@@ -92,6 +93,16 @@ export default function StudentOnlineClasses() {
                           <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                             <Clock className="w-3 h-3" /> Started {cls.started_at ? new Date(cls.started_at).toLocaleTimeString() : "now"}
                           </p>
+                          {cls.gmeet_link && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 mt-2 text-blue-600 font-medium text-xs gap-1"
+                              onClick={() => window.open(cls.gmeet_link!, "_blank")}
+                            >
+                              <Video className="w-3 h-3" /> Join GMeet (External)
+                            </Button>
+                          )}
                         </div>
                         <Button className="gap-2 shrink-0" onClick={() => setActiveRoom({ roomId: cls.room_id, title: cls.title })}>
                           <Video className="w-4 h-4" /> Join
@@ -121,6 +132,16 @@ export default function StudentOnlineClasses() {
                         <p className="text-xs text-primary mt-2 flex items-center gap-1 font-medium">
                           <Calendar className="w-3 h-3" /> {new Date(cls.scheduled_at).toLocaleString()}
                         </p>
+                      )}
+                      {cls.gmeet_link && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 mt-2 text-blue-600 font-medium text-xs gap-1"
+                          onClick={() => window.open(cls.gmeet_link!, "_blank")}
+                        >
+                          <Video className="w-3 h-3" /> Join GMeet (External)
+                        </Button>
                       )}
                     </CardContent>
                   </Card>
