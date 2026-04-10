@@ -229,7 +229,20 @@ router.get('/student/online-classes', async (req, res) => {
 
 // ─── Admin: List ALL classes with full metadata ───
 router.get('/admin/online-classes', async (req, res) => {
-...
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    const [rows] = await pool.execute(
+      `SELECT oc.*, c.course_name, c.course_code, u.name as teacher_name
+       FROM online_classes oc
+       LEFT JOIN courses c ON oc.course_id = c.id
+       JOIN users u ON oc.teacher_user_id = u.id
+       ORDER BY oc.created_at DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[OnlineClass] Admin list error:', err);
+    res.status(500).json({ error: 'Failed to fetch classes' });
+  }
 });
 
 // ─── Admin: Search for teachers (to assign as GMeet hosts) ───
