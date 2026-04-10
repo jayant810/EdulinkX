@@ -498,6 +498,12 @@ const initializeDatabase = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_questions_slug ON community_questions(slug);
       CREATE INDEX IF NOT EXISTS idx_answers_question_id ON community_answers(question_id);
+      CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_records(student_user_id);
+      CREATE INDEX IF NOT EXISTS idx_course_students_student ON course_students(student_user_id);
+      CREATE INDEX IF NOT EXISTS idx_assignment_submissions_student ON assignment_submissions(student_user_id);
+      CREATE INDEX IF NOT EXISTS idx_assignments_course ON assignments(course_id);
+      CREATE INDEX IF NOT EXISTS idx_attendance_sessions_course ON attendance_sessions(course_id);
+      CREATE INDEX IF NOT EXISTS idx_online_classes_course ON online_classes(course_id);
     `);
 
     await client.query('COMMIT');

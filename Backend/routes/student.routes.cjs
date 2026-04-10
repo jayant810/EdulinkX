@@ -1,4 +1,4 @@
-// Force trigger rebuild for student routes - v1.0.1
+// Force trigger rebuild for student routes - v1.0.2
 const express = require("express");
 const router = express.Router();
 const { pool } = require("../db.cjs");
@@ -17,25 +17,32 @@ const { cloudinaryUpload, getSignedCloudinaryUrl } = require("../utils/cloudinar
 router.get("/dashboard/summary", async (req, res) => {
   const studentId = req.user.id;
   try {
-    // Attendance % - Only count marked records
-    const [[attendance]] = await pool.execute(`
-      SELECT ROUND(COALESCE((SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / NULLIF(COUNT(CASE WHEN status != 'not_marked' THEN 1 END), 0)) * 100, 0)) as percentage 
-      FROM attendance_records WHERE student_user_id = ?`, [studentId]);
+    const [attendanceRes, profileRes, coursesRes, assignmentsRes] = await Promise.all([
+      // Attendance % - Only count marked records
+      pool.execute(`
+        SELECT ROUND(COALESCE((SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)::DECIMAL / NULLIF(COUNT(CASE WHEN status != 'not_marked' THEN 1 END), 0)) * 100, 0)) as percentage 
+        FROM attendance_records WHERE student_user_id = ?`, [studentId]),
+      
+      // CGPA
+      pool.execute(`
+        SELECT current_cgpa FROM student_profiles WHERE user_id = ?`, [studentId]),
+      
+      // Enrolled Courses count
+      pool.execute(`
+        SELECT COUNT(*) as count FROM course_students WHERE student_user_id = ?`, [studentId]),
+      
+      // Pending Assignments count
+      pool.execute(`
+        SELECT COUNT(*) as count FROM assignments a
+        JOIN course_students cs ON cs.course_id = a.course_id
+        LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_user_id = ?
+        WHERE cs.student_user_id = ? AND s.id IS NULL AND a.due_date > CURRENT_TIMESTAMP`, [studentId, studentId])
+    ]);
 
-    // CGPA
-    const [[profile]] = await pool.execute(`
-      SELECT current_cgpa FROM student_profiles WHERE user_id = ?`, [studentId]);
-
-    // Enrolled Courses count
-    const [[courses]] = await pool.execute(`
-      SELECT COUNT(*) as count FROM course_students WHERE student_user_id = ?`, [studentId]);
-
-    // Pending Assignments count
-    const [[pendingAssignments]] = await pool.execute(`
-      SELECT COUNT(*) as count FROM assignments a
-      JOIN course_students cs ON cs.course_id = a.course_id
-      LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_user_id = ?
-      WHERE cs.student_user_id = ? AND s.id IS NULL AND a.due_date > CURRENT_TIMESTAMP`, [studentId, studentId]);
+    const attendance = attendanceRes[0][0];
+    const profile = profileRes[0][0];
+    const courses = coursesRes[0][0];
+    const pendingAssignments = assignmentsRes[0][0];
 
     res.json({
       attendance: parseInt(attendance?.percentage || 0),
