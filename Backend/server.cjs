@@ -29,7 +29,7 @@ if (process.env.REDIS_URL || process.env.USE_REDIS === 'true') {
 }
 
 app.use(cors({
-  origin: ["https://edulinkx.jayantsadhwani.me", "http://localhost:5173"],
+  origin: ["https://edulinkx.jayantsadhwani.me", "https://edulink-x.vercel.app", "http://localhost:5173"],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
