@@ -1,0 +1,10 @@
+{
+  "url": "https://edulinkx.jayantsadhwani.me/api/auth/login",
+  "connections": 400,
+  "duration": 120,
+  "method": "POST",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": "{\"email\":\"student@edulinkx.com\",\"password\":\"student\"}"
+}

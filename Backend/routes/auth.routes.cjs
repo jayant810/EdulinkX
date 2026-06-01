@@ -301,9 +301,21 @@ router.post("/google", async (req, res) => {
 
   try {
     console.log("[Google Auth] Verifying token...");
+    
+    // Parse the client ID (handle comma-separated lists and trim whitespace)
+    let audience = clientId;
+    if (typeof clientId === 'string') {
+      audience = clientId.includes(',') ? clientId.split(',').map(s => s.trim()) : clientId.trim();
+    }
+
+    // Decode token to log the audience for debugging
+    const decodedToken = jwt.decode(idToken);
+    console.log("[Google Auth] Expected Audience:", audience);
+    console.log("[Google Auth] Token Audience:", decodedToken ? decodedToken.aud : "unknown");
+
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: clientId,
+      audience: audience,
     });
     const payload = ticket.getPayload();
     const { sub: googleId, email } = payload;
