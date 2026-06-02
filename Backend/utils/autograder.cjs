@@ -12,8 +12,17 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 async function extractTextFromFile(buffer, mimeType) {
   try {
     if (mimeType === 'application/pdf') {
-      const data = await pdf(buffer);
-      return data.text;
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = "Extract and return all the text content from this document clearly. Do not add any extra commentary.";
+      const pdfPart = {
+        inlineData: {
+          data: buffer.toString("base64"),
+          mimeType: "application/pdf"
+        }
+      };
+      const result = await model.generateContent([prompt, pdfPart]);
+      const response = await result.response;
+      return response.text();
     } else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
       const workbook = xlsx.read(buffer, { type: 'buffer' });
       let text = '';
