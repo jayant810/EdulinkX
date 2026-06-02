@@ -127,22 +127,42 @@ export default function ManageCourse() {
     if (!file) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
+    const chunkSize = 1024 * 1024 * 5; // 5MB chunks
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const fileName = `${Date.now()}-${file.name}`;
+    
     try {
-      const res = await fetch(`${API_BASE}/api/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
+      let finalUrl = "";
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = file.slice(i * chunkSize, (i + 1) * chunkSize);
+        const formData = new FormData();
+        formData.append('chunk', chunk);
+        formData.append('fileName', fileName);
+        formData.append('chunkIndex', i.toString());
+        formData.append('totalChunks', totalChunks.toString());
 
-      if (!res.ok) throw new Error("Upload failed");
+        const res = await fetch(`${API_BASE}/api/upload/chunk`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
 
-      const data = await res.json();
-      setNewLecture(prev => ({ ...prev, video_url: data.url, video_type: 'local' }));
-      toast.success("Video uploaded successfully");
+        if (!res.ok) throw new Error(`Failed to upload chunk ${i}`);
+        
+        const data = await res.json();
+        if (data.completed && data.url) {
+          finalUrl = data.url;
+        }
+      }
+
+      if (finalUrl) {
+        setNewLecture(prev => ({ ...prev, video_url: finalUrl, video_type: 'local' }));
+        toast.success("Video uploaded successfully");
+      } else {
+        throw new Error("Upload completed but no URL received");
+      }
     } catch (err) {
+      console.error(err);
       toast.error("Failed to upload video");
     } finally {
       setUploading(false);
