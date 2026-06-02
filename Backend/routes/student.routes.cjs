@@ -436,6 +436,9 @@ router.post("/exams/:id/submit/pdf", cloudinaryUpload.single("pdf"), async (req,
         const studentPdfUrl = getSignedCloudinaryUrl(req.file);
         console.log(`[Autograder] Downloading student PDF from Cloudinary: ${studentPdfUrl}`);
         const stResponse = await fetch(studentPdfUrl);
+        if (!stResponse.ok) {
+          throw new Error(`Failed to download PDF from Cloudinary. Status: ${stResponse.status}`);
+        }
         const stArrayBuf = await stResponse.arrayBuffer();
         const fileBuffer = Buffer.from(stArrayBuf);
 

@@ -68,7 +68,9 @@ async function uploadToCloudinary(filePath, folder = 'edulinkx/general') {
  * Generates a signed URL manually from a Cloudinary file response
  */
 function getSignedCloudinaryUrl(file) {
-  const isRaw = file.path && file.path.includes('/raw/');
+  const isRaw = (file.path && file.path.includes('/raw/')) || 
+                (file.originalname && file.originalname.toLowerCase().endsWith('.pdf')) ||
+                (file.mimetype === 'application/pdf');
   return cloudinary.url(file.filename, {
     secure: true,
     resource_type: isRaw ? 'raw' : 'image',

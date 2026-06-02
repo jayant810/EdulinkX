@@ -12,6 +12,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 async function extractTextFromFile(buffer, mimeType) {
   try {
     if (mimeType === 'application/pdf') {
+      const signature = buffer.slice(0, 5).toString('utf-8');
+      if (signature !== '%PDF-') {
+        console.error(`[Autograder] Invalid PDF signature: ${signature}. Buffer size: ${buffer.length}`);
+        throw new Error("Invalid PDF format downloaded");
+      }
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const prompt = "Extract and return all the text content from this document clearly. Do not add any extra commentary.";
       const pdfPart = {
