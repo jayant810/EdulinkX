@@ -27,6 +27,10 @@ router.get("/connect-google", (req, res) => {
   const authHeader = req.headers?.authorization;
   if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
 
+  const host = req.get('host');
+  const protocol = host.includes('localhost') ? 'http' : 'https';
+  const dynamicRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${protocol}://${host}/api/auth/google-callback`;
+
   const scopes = [
     'https://www.googleapis.com/auth/calendar.events',
     'https://www.googleapis.com/auth/userinfo.email',
@@ -35,7 +39,10 @@ router.get("/connect-google", (req, res) => {
 
   const state = authHeader.split(' ')[1]; // Pass JWT as state to verify user on callback
 
-  const url = googleClient.generateAuthUrl({
+  // Instantiate a temporary client with the dynamic redirect URI
+  const localGoogleClient = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, dynamicRedirectUri);
+
+  const url = localGoogleClient.generateAuthUrl({
     access_type: 'offline',
     scope: scopes,
     state: state,
@@ -56,12 +63,17 @@ router.get("/google-callback", async (req, res) => {
   }
 
   try {
+    const host = req.get('host');
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const dynamicRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${protocol}://${host}/api/auth/google-callback`;
+    const localGoogleClient = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, dynamicRedirectUri);
+
     // 1. Verify the JWT from state to get user ID
     const decoded = jwt.verify(token, JWT_SECRET);
     const userId = decoded.id;
 
     // 2. Exchange code for tokens
-    const { tokens } = await googleClient.getToken(code);
+    const { tokens } = await localGoogleClient.getToken(code);
     
     // Encrypt refresh token if present
     const encryptedRefreshToken = tokens.refresh_token ? encrypt(tokens.refresh_token) : null;
