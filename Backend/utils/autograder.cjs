@@ -17,7 +17,7 @@ async function extractTextFromFile(buffer, mimeType) {
         console.error(`[Autograder] Invalid PDF signature: ${signature}. Buffer size: ${buffer.length}`);
         return { text: null, error: `Invalid PDF format downloaded from Cloudinary. Signature: ${signature}` };
       }
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const prompt = "Extract and return all the text content from this document clearly. Do not add any extra commentary.";
       const pdfPart = {
         inlineData: {
@@ -67,7 +67,7 @@ function calculateSimilarity(str1, str2) {
  */
 async function gradeWithGemini(studentText, expectedText, contextPrompt, questionText = '') {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     const prompt = `
       You are an expert academic evaluator. Grade the following student's answer based on the expected answer and context provided.
