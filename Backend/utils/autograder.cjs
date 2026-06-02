@@ -15,7 +15,7 @@ async function extractTextFromFile(buffer, mimeType) {
       const signature = buffer.slice(0, 5).toString('utf-8');
       if (signature !== '%PDF-') {
         console.error(`[Autograder] Invalid PDF signature: ${signature}. Buffer size: ${buffer.length}`);
-        throw new Error("Invalid PDF format downloaded");
+        return { text: null, error: `Invalid PDF format downloaded from Cloudinary. Signature: ${signature}` };
       }
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const prompt = "Extract and return all the text content from this document clearly. Do not add any extra commentary.";
@@ -27,21 +27,21 @@ async function extractTextFromFile(buffer, mimeType) {
       };
       const result = await model.generateContent([prompt, pdfPart]);
       const response = await result.response;
-      return response.text();
+      return { text: response.text(), error: null };
     } else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
       const workbook = xlsx.read(buffer, { type: 'buffer' });
       let text = '';
       workbook.SheetNames.forEach(sheetName => {
         text += xlsx.utils.sheet_to_txt(workbook.Sheets[sheetName]) + '\n';
       });
-      return text;
+      return { text, error: null };
     } else {
       // Assume text/plain or similar
-      return buffer.toString('utf-8');
+      return { text: buffer.toString('utf-8'), error: null };
     }
   } catch (err) {
     console.error('[Autograder] Text extraction failed:', err.message);
-    return '';
+    return { text: null, error: `Extraction Exception: ${err.message}` };
   }
 }
 
@@ -108,9 +108,10 @@ async function gradeWithGemini(studentText, expectedText, contextPrompt, questio
 async function gradeSubmissionFile(fileBuffer, fileName, mimeType, examId, questionIdx = 0, method = "gemini", prompt = null, answerKeyUrl = null) {
   console.log(`[Autograder] Locally grading file: ${fileName} (${mimeType})`);
   
-  const studentText = await extractTextFromFile(fileBuffer, mimeType);
+  const extraction = await extractTextFromFile(fileBuffer, mimeType);
+  const studentText = extraction.text;
   if (!studentText) {
-    return { grading_result: { score: 0, feedback: "Could not extract text from file." } };
+    return { grading_result: { score: 0, feedback: `Could not extract text: ${extraction.error}` } };
   }
 
   let expectedText = "No answer key provided.";
@@ -167,8 +168,8 @@ async function gradeSubmissionText(studentAnswer, expectedAnswer, method = "gemi
 async function parseAnswerKeyUpload(fileBuffer, fileName, examId) {
   console.log(`[Autograder] Locally parsing answer key: ${fileName} for Exam ${examId}`);
   // In a full implementation, we might store the parsed text in the DB for later use
-  const text = await extractTextFromFile(fileBuffer, 'application/pdf');
-  return { success: true, text_preview: text.substring(0, 100) };
+  const extraction = await extractTextFromFile(fileBuffer, 'application/pdf');
+  return { success: true, text_preview: extraction.text ? extraction.text.substring(0, 100) : '' };
 }
 
 module.exports = {
