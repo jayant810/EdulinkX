@@ -97,8 +97,7 @@ const { cloudinaryUpload, getSignedCloudinaryUrl } = require("./utils/cloudinary
 app.post('/api/upload', verifyToken, cloudinaryUpload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
-  const signedUrl = getSignedCloudinaryUrl(req.file);
-  res.json({ url: signedUrl });
+  res.json({ url: req.file.path });
 });
 
 // ===== Handle Chunked Uploads =====
@@ -141,13 +140,11 @@ app.post('/api/upload/chunk', verifyToken, uploadLocal.single('chunk'), async (r
   }
 });
 
-// Dedicated Answer Key Upload (Auto-uploads to Cloudinary)
 app.post('/api/upload-answer-key', verifyToken, cloudinaryUpload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
-  const signedUrl = getSignedCloudinaryUrl(req.file);
-  console.log(`[Cloudinary] Answer Key uploaded successfully: ${signedUrl}`);
-  res.json({ url: signedUrl });
+  console.log(`[Cloudinary] Answer Key uploaded successfully: ${req.file.path}`);
+  res.json({ url: req.file.path });
 });
 
 app.use("/api", verifyToken, assignmentRoutes);
