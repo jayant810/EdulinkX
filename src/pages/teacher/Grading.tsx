@@ -37,10 +37,27 @@ const TeacherGrading = () => {
   const [gradedSubmissions, setGradedSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
+  const [selectedQuestions, setSelectedQuestions] = useState<any[]>([]);
   const [gradeData, setGradeData] = useState({ score: "", feedback: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [aiGrading, setAiGrading] = useState<string | null>(null); // submission id being graded
+
+  const fetchQuestions = async (sourceId: string, submitType: string) => {
+    try {
+      const endpoint = submitType === 'exam' 
+        ? `${API_BASE}/api/teacher/exams/${sourceId}`
+        : `${API_BASE}/api/teacher/assignments/${sourceId}`;
+      const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedQuestions(data.questions || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch questions", err);
+    }
+  };
 
   const fetchSubmissions = async () => {
     if (!token) return;
@@ -101,8 +118,60 @@ const TeacherGrading = () => {
     setAiGrading(submission.id);
     try {
       let result;
-      if (submission.submission_text) {
-        // Text-based grading (short answer)
+      if (submission.type === 'short' || submission.type === 'mcq') {
+        // Fetch questions first
+        const endpoint = submission.submit_type === 'exam' 
+          ? `${API_BASE}/api/teacher/exams/${submission.source_id}`
+          : `${API_BASE}/api/teacher/assignments/${submission.source_id}`;
+        
+        const qRes = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+        const qData = await qRes.json();
+        const questions = qData.questions || [];
+        
+        let answersObj: Record<string, string> = {};
+        try { answersObj = JSON.parse(submission.submission_text); } catch(e) {}
+        
+        const batchPayload = questions.map((q: any) => ({
+          student_answer: answersObj[q.id] || "",
+          expected_answer: q.correct_answer || q.expected_answer || "",
+          question_context: q.question_text || q.question || "",
+          method: "gemini"
+        }));
+
+        const res = await fetch(`${API_BASE}/api/teacher/ai-grade/batch-text`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ answers: batchPayload })
+        });
+        if (!res.ok) throw new Error("AI batch grading failed");
+        result = await res.json();
+        
+        let totalScore = 0;
+        let combinedFeedback = "";
+        if (result.results) {
+          result.results.forEach((r: any, idx: number) => {
+            const marks = questions[idx]?.marks || 1;
+            if (r.grading_result) {
+              totalScore += (r.grading_result.score / 100) * marks;
+              combinedFeedback += `Q${idx+1}: ${r.grading_result.feedback}\n\n`;
+            } else if (r.similarity_score !== undefined) {
+              const score = r.passed ? marks : 0;
+              totalScore += score;
+              combinedFeedback += `Q${idx+1}: Similarity ${r.similarity_score}%\n\n`;
+            }
+          });
+        }
+        
+        setGradeData({ score: String(Math.round(totalScore)), feedback: combinedFeedback.trim() });
+        setSelectedQuestions(questions);
+        setSelectedSubmission(submission);
+        setIsDialogOpen(true);
+        toast.success("AI grading complete! Review the results.");
+      } else if (submission.submission_text) {
+        // Text-based grading (single short answer fallback)
         const res = await fetch(`${API_BASE}/api/teacher/ai-grade/text`, {
           method: "POST",
           headers: {
@@ -118,6 +187,12 @@ const TeacherGrading = () => {
         });
         if (!res.ok) throw new Error("AI grading failed");
         result = await res.json();
+        const score = result.grading_result?.score ?? result.final_marks ?? 0;
+        const feedback = result.grading_result?.feedback ?? `Similarity: ${result.similarity_score}%`;
+        setGradeData({ score: String(score), feedback });
+        setSelectedSubmission(submission);
+        setIsDialogOpen(true);
+        toast.success("AI grading complete! Review the results.");
       } else if (submission.file_url) {
         // Image/PDF grading
         const fileRes = await fetch(`${API_BASE}${submission.file_url}`);
@@ -136,18 +211,16 @@ const TeacherGrading = () => {
         });
         if (!res.ok) throw new Error("AI grading failed");
         result = await res.json();
+        const score = result.grading_result?.score ?? result.final_marks ?? 0;
+        const feedback = result.grading_result?.feedback ?? `Similarity: ${result.similarity_score}%`;
+        setGradeData({ score: String(score), feedback });
+        setSelectedSubmission(submission);
+        setIsDialogOpen(true);
+        toast.success("AI grading complete! Review the results.");
       } else {
         toast.error("No submission content to grade");
         return;
       }
-
-      // Auto-fill the grading dialog
-      const score = result.grading_result?.score ?? result.final_marks ?? 0;
-      const feedback = result.grading_result?.feedback ?? `Similarity: ${result.similarity_score}%`;
-      setGradeData({ score: String(score), feedback });
-      setSelectedSubmission(submission);
-      setIsDialogOpen(true);
-      toast.success("AI grading complete! Review the results.");
     } catch (err) {
       console.error("AI grading error", err);
       toast.error("AI grading failed. Try again.");
@@ -234,31 +307,65 @@ const TeacherGrading = () => {
                               <><Sparkles className="h-4 w-4 mr-1" /> AI Grade</>
                             )}
                           </Button>
-                          <Dialog open={isDialogOpen && selectedSubmission?.id === submission.id} onOpenChange={(open) => {
-                            setIsDialogOpen(open);
-                            if (open) setSelectedSubmission(submission);
-                          }}>
-                            <DialogTrigger asChild>
-                              <Button size="sm" variant="hero" onClick={() => setSelectedSubmission(submission)}>
-                                <ClipboardCheck className="h-4 w-4 mr-1" /> Grade
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-[500px]">
-                              <DialogHeader>
-                                <DialogTitle>Grade Submission</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4 pt-4">
-                                <div className="p-4 rounded-lg bg-muted/50 border border-primary/10">
-                                  <p className="font-bold">{submission.student}</p>
-                                  <p className="text-sm text-muted-foreground">{submission.assignment}</p>
-                                </div>
-                                
-                                {submission.submission_text && (
-                                  <div className="p-4 rounded-lg border bg-background">
-                                    <label className="text-[10px] font-bold text-muted-foreground uppercase mb-2 block">Student Response:</label>
-                                    <p className="text-sm whitespace-pre-wrap">{submission.submission_text}</p>
+                            <Dialog open={isDialogOpen && selectedSubmission?.id === submission.id} onOpenChange={(open) => {
+                              setIsDialogOpen(open);
+                              if (open) {
+                                setSelectedSubmission(submission);
+                                fetchQuestions(submission.source_id, submission.submit_type);
+                              }
+                            }}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="hero" onClick={() => {
+                                  setSelectedSubmission(submission);
+                                  fetchQuestions(submission.source_id, submission.submit_type);
+                                }}>
+                                  <ClipboardCheck className="h-4 w-4 mr-1" /> Grade
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+                                <DialogHeader>
+                                  <DialogTitle>Grade Submission</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 pt-4">
+                                  <div className="p-4 rounded-lg bg-muted/50 border border-primary/10">
+                                    <p className="font-bold">{submission.student}</p>
+                                    <p className="text-sm text-muted-foreground">{submission.assignment}</p>
                                   </div>
-                                )}
+                                  
+                                  {(submission.type === 'short' || submission.type === 'mcq') && selectedQuestions.length > 0 ? (
+                                    <div className="space-y-4">
+                                      {selectedQuestions.map((q: any, i: number) => {
+                                        let ans = "";
+                                        try {
+                                          const parsed = JSON.parse(submission.submission_text);
+                                          ans = parsed[q.id] || "";
+                                        } catch(e) { ans = submission.submission_text; }
+                                        
+                                        return (
+                                          <div key={q.id} className="p-4 rounded-lg border bg-background space-y-2">
+                                            <p className="text-sm font-medium"><span className="text-muted-foreground font-bold">Q{i+1}:</span> {q.question_text || q.question}</p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                              <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
+                                                <p className="text-[10px] font-bold text-primary uppercase mb-1">Student Answer</p>
+                                                <p className="text-sm font-medium">{ans || <span className="italic text-muted-foreground">No Answer</span>}</p>
+                                              </div>
+                                              {(q.correct_answer || q.expected_answer) && (
+                                                <div className="bg-success/5 p-3 rounded-md border border-success/10">
+                                                  <p className="text-[10px] font-bold text-success uppercase mb-1">Expected Answer</p>
+                                                  <p className="text-sm">{q.correct_answer || q.expected_answer}</p>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : submission.submission_text ? (
+                                    <div className="p-4 rounded-lg border bg-background">
+                                      <label className="text-[10px] font-bold text-muted-foreground uppercase mb-2 block">Student Response:</label>
+                                      <p className="text-sm whitespace-pre-wrap">{submission.submission_text}</p>
+                                    </div>
+                                  ) : null}
 
                                 <div className="grid grid-cols-2 gap-4">
                                   <div className="space-y-2">
@@ -349,9 +456,88 @@ const TeacherGrading = () => {
                               {new Date(submission.submitted_at).toLocaleDateString()}
                             </td>
                             <td className="py-4 px-2 text-center">
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <Eye className="h-4 w-4" />
-                              </Button>
+                              <Dialog open={isViewDialogOpen && selectedSubmission?.id === submission.id} onOpenChange={(open) => {
+                                setIsViewDialogOpen(open);
+                                if (open) {
+                                  setSelectedSubmission(submission);
+                                  fetchQuestions(submission.source_id, submission.submit_type);
+                                }
+                              }}>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {
+                                    setSelectedSubmission(submission);
+                                    fetchQuestions(submission.source_id, submission.submit_type);
+                                  }}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+                                  <DialogHeader>
+                                    <DialogTitle>View Graded Submission</DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-4 pt-4">
+                                    <div className="p-4 rounded-lg bg-muted/50 border border-primary/10 flex justify-between items-center">
+                                      <div>
+                                        <p className="font-bold">{submission.student}</p>
+                                        <p className="text-sm text-muted-foreground">{submission.assignment}</p>
+                                      </div>
+                                      <Badge variant="success" className="text-lg py-1 px-3">
+                                        {submission.score} / {submission.max_score}
+                                      </Badge>
+                                    </div>
+                                    
+                                    {(submission.type === 'short' || submission.type === 'mcq') && selectedQuestions.length > 0 ? (
+                                      <div className="space-y-4">
+                                        {selectedQuestions.map((q: any, i: number) => {
+                                          let ans = "";
+                                          try {
+                                            const parsed = JSON.parse(submission.submission_text);
+                                            ans = parsed[q.id] || "";
+                                          } catch(e) { ans = submission.submission_text; }
+                                          
+                                          return (
+                                            <div key={q.id} className="p-4 rounded-lg border bg-background space-y-2">
+                                              <p className="text-sm font-medium"><span className="text-muted-foreground font-bold">Q{i+1}:</span> {q.question_text || q.question}</p>
+                                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                                <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
+                                                  <p className="text-[10px] font-bold text-primary uppercase mb-1">Student Answer</p>
+                                                  <p className="text-sm font-medium">{ans || <span className="italic text-muted-foreground">No Answer</span>}</p>
+                                                </div>
+                                                {(q.correct_answer || q.expected_answer) && (
+                                                  <div className="bg-success/5 p-3 rounded-md border border-success/10">
+                                                    <p className="text-[10px] font-bold text-success uppercase mb-1">Expected Answer</p>
+                                                    <p className="text-sm">{q.correct_answer || q.expected_answer}</p>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : submission.submission_text ? (
+                                      <div className="p-4 rounded-lg border bg-background">
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase mb-2 block">Student Response:</label>
+                                        <p className="text-sm whitespace-pre-wrap">{submission.submission_text}</p>
+                                      </div>
+                                    ) : submission.file_url ? (
+                                      <div className="p-4 rounded-lg border bg-background text-center">
+                                        <Button asChild variant="outline">
+                                          <a href={`${API_BASE}${submission.file_url}`} target="_blank" rel="noopener noreferrer">
+                                            <Download className="h-4 w-4 mr-2" /> Download PDF Submission
+                                          </a>
+                                        </Button>
+                                      </div>
+                                    ) : null}
+                                    
+                                    {submission.feedback && (
+                                      <div className="mt-4 p-4 rounded-lg bg-secondary/20 border border-secondary/30">
+                                        <label className="text-[10px] font-bold text-secondary-foreground uppercase mb-1 block">Feedback Given</label>
+                                        <p className="text-sm whitespace-pre-wrap text-foreground/80">{submission.feedback}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
                             </td>
                           </tr>
                         ))}

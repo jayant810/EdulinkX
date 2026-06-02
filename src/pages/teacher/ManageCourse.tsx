@@ -217,7 +217,10 @@ export default function ManageCourse() {
 
   const getFullVideoUrl = (url: string, type: string) => {
     if (!url) return "";
-    return type === 'local' ? `${API_BASE}${url}` : url;
+    if (type === 'local' && !url.startsWith('http://') && !url.startsWith('https://')) {
+      return `${API_BASE}${url.startsWith('/') ? url : '/' + url}`;
+    }
+    return url;
   };
 
   if (loading) return <div className="p-12 text-center">Loading course details...</div>;

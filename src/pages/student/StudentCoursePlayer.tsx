@@ -214,6 +214,9 @@ const StudentCoursePlayer = () => {
   const getVideoSrc = (lecture: any) => {
     if (!lecture) return "";
     if (lecture.video_type === 'local') {
+      if (lecture.video_url.startsWith('http://') || lecture.video_url.startsWith('https://')) {
+        return lecture.video_url;
+      }
       const baseUrl = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
       const videoPath = lecture.video_url.startsWith('/') ? lecture.video_url : `/${lecture.video_url}`;
       return `${baseUrl}${videoPath}`;

@@ -36,7 +36,8 @@ app.use(cors({
 }));
 app.use(express.json());
 const path = require('path');
-// const fs = require('fs');
+const fs = require('fs');
+const multer = require('multer');
 
 // --- MySQL pool ---
 const { pool, initializeDatabase } = require("./db.cjs");
@@ -98,6 +99,46 @@ app.post('/api/upload', verifyToken, cloudinaryUpload.single('file'), (req, res)
   
   const signedUrl = getSignedCloudinaryUrl(req.file);
   res.json({ url: signedUrl });
+});
+
+// ===== Handle Chunked Uploads =====
+const uploadLocal = multer({ dest: path.join(__dirname, 'public/uploads/temp/') });
+
+app.post('/api/upload/chunk', verifyToken, uploadLocal.single('chunk'), async (req, res) => {
+  const { fileName, chunkIndex, totalChunks } = req.body;
+  if (!req.file || !fileName || chunkIndex === undefined || totalChunks === undefined) {
+    return res.status(400).json({ error: 'Missing chunk data' });
+  }
+
+  const tempDir = path.join(__dirname, 'public/uploads/temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  // Sanitize filename to prevent directory traversal
+  const safeFileName = path.basename(fileName);
+  const filePath = path.join(tempDir, safeFileName);
+
+  try {
+    const chunkBuffer = fs.readFileSync(req.file.path);
+    fs.appendFileSync(filePath, chunkBuffer);
+    fs.unlinkSync(req.file.path); // Remove the multer temp file
+
+    // If it's the last chunk
+    if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
+      const { uploadToCloudinary } = require("./utils/cloudinary.cjs");
+      const result = await uploadToCloudinary(filePath, 'edulinkx/lectures');
+      
+      // Clean up the assembled file
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+      if (!result) return res.status(500).json({ error: 'Failed to upload to Cloudinary' });
+      return res.json({ url: result.url, completed: true });
+    }
+
+    res.json({ message: `Chunk ${chunkIndex} received`, completed: false });
+  } catch (err) {
+    console.error('Chunk upload error:', err);
+    res.status(500).json({ error: 'Failed to process chunk' });
+  }
 });
 
 // Dedicated Answer Key Upload (Auto-uploads to Cloudinary)

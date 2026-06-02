@@ -485,6 +485,38 @@ router.post("/exams", async (req, res) => {
   }
 });
 
+// 6.5 Get Single Exam with Questions
+router.get("/exams/:id", async (req, res) => {
+  const teacherId = req.user.id;
+  const { id } = req.params;
+
+  try {
+    const [[exam]] = await pool.execute(`
+      SELECT e.*, c.course_code, c.course_name 
+      FROM exams e
+      JOIN courses c ON c.id = e.course_id
+      WHERE e.id = ? AND e.teacher_id = ?`, [id, teacherId]);
+
+    if (!exam) return res.status(404).json({ error: "Exam not found or unauthorized" });
+
+    const [questions] = await pool.execute(
+      "SELECT * FROM exam_questions WHERE exam_id = ?",
+      [id]
+    );
+
+    res.json({ 
+      ...exam, 
+      questions: questions.map(q => ({
+        ...q,
+        options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // --- ATTENDANCE ---
 
 router.get("/holidays", async (req, res) => {
