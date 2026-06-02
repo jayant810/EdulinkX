@@ -71,9 +71,17 @@ function getSignedCloudinaryUrl(file) {
   const isRaw = (file.path && file.path.includes('/raw/')) || 
                 (file.originalname && file.originalname.toLowerCase().endsWith('.pdf')) ||
                 (file.mimetype === 'application/pdf');
+  
+  const isVideo = file.mimetype && file.mimetype.startsWith('video/');
+  
+  let resourceType = 'image';
+  if (isRaw) resourceType = 'raw';
+  else if (isVideo) resourceType = 'video';
+  else if (file.path && file.path.includes('/video/')) resourceType = 'video';
+
   return cloudinary.url(file.filename, {
     secure: true,
-    resource_type: isRaw ? 'raw' : 'image',
+    resource_type: resourceType,
     sign_url: true
   });
 }
