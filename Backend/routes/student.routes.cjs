@@ -656,5 +656,19 @@ router.get("/fees", async (req, res) => {
     ]
   });
 });
+// 13. Course Contents
+router.get("/courses/:courseId/content", async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const [rows] = await pool.execute(
+      "SELECT * FROM course_contents WHERE course_id = ? ORDER BY created_at DESC",
+      [courseId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[Student Course Content]", err);
+    res.status(500).json({ error: "Failed to fetch course contents" });
+  }
+});
 
 module.exports = router;

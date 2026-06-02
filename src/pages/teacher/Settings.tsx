@@ -57,6 +57,19 @@ const TeacherSettings = () => {
   const [googleConnected, setGoogleConnected] = useState(false);
 
   useEffect(() => {
+    // Check URL params for google OAuth redirect status
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("google_connected") === "success") {
+      toast.success("Google account connected successfully!");
+      // Remove query param without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (params.get("google_connected") === "error") {
+      toast.error(`Google connection failed: ${params.get("message") || "Unknown error"}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!token) return;
     
     // Check Google status

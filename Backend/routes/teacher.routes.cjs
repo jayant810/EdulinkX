@@ -5,7 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const xlsx = require("xlsx");
-const { uploadToCloudinary } = require("../utils/cloudinary.cjs");
+const { uploadToCloudinary, cloudinaryUpload } = require("../utils/cloudinary.cjs");
 const { parseAnswerKeyUpload } = require("../utils/autograder.cjs");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -1063,6 +1063,75 @@ router.delete("/announcements/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
+  }
+});
+// --- Course Content Uploads ---
+
+router.post("/courses/:courseId/content", cloudinaryUpload.single("file"), async (req, res) => {
+  if (req.user.role !== "teacher") return res.status(403).json({ error: "Forbidden" });
+  
+  const { courseId } = req.params;
+  const { title, description } = req.body;
+  
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  try {
+    const fileUrl = req.file.path;
+    const fileName = req.file.originalname;
+    const fileSize = req.file.size;
+    const mimeType = req.file.mimetype;
+
+    const [result] = await pool.execute(
+      `INSERT INTO course_contents 
+       (course_id, title, description, file_url, file_name, file_size, mime_type) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [courseId, title, description, fileUrl, fileName, fileSize, mimeType]
+    );
+
+    res.status(201).json({ 
+      id: result.insertId,
+      course_id: courseId,
+      title,
+      description,
+      file_url: fileUrl,
+      file_name: fileName,
+      file_size: fileSize,
+      mime_type: mimeType
+    });
+  } catch (err) {
+    console.error("[Course Content Upload]", err);
+    res.status(500).json({ error: "Failed to upload course content" });
+  }
+});
+
+router.get("/courses/:courseId/content", async (req, res) => {
+  const { courseId } = req.params;
+  try {
+    const [rows] = await pool.execute(
+      "SELECT * FROM course_contents WHERE course_id = ? ORDER BY created_at DESC",
+      [courseId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("[Course Content GET]", err);
+    res.status(500).json({ error: "Failed to fetch course contents" });
+  }
+});
+
+router.delete("/courses/:courseId/content/:contentId", async (req, res) => {
+  if (req.user.role !== "teacher") return res.status(403).json({ error: "Forbidden" });
+  const { courseId, contentId } = req.params;
+  try {
+    await pool.execute(
+      "DELETE FROM course_contents WHERE id = ? AND course_id = ?",
+      [contentId, courseId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Course Content DELETE]", err);
+    res.status(500).json({ error: "Failed to delete course content" });
   }
 });
 

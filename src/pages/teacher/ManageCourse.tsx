@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "sonner";
 import { BulkUpload } from "@/components/shared/BulkUpload";
@@ -29,8 +30,10 @@ export default function ManageCourse() {
   
   const [course, setCourse] = useState<any>(null);
   const [lectures, setLectures] = useState<any[]>([]);
+  const [courseContents, setCourseContents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadingContent, setUploadingContent] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [newLecture, setNewLecture] = useState<any>({
@@ -61,11 +64,20 @@ export default function ManageCourse() {
       const courseData = await courseRes.json();
       setCourse(courseData);
 
-      const lecturesRes = await fetch(`${API_BASE}/api/teacher/courses/${courseId}/lectures`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const [lecturesRes, contentsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/teacher/courses/${courseId}/lectures`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`${API_BASE}/api/teacher/courses/${courseId}/content`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
       const lecturesData = await lecturesRes.json();
+      const contentsData = await contentsRes.json();
+
       setLectures(Array.isArray(lecturesData) ? lecturesData : []);
+      setCourseContents(Array.isArray(contentsData) ? contentsData : []);
       
       setNewLecture(prev => ({ 
         ...prev, 
@@ -134,6 +146,48 @@ export default function ManageCourse() {
       toast.error("Failed to upload video");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleContentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingContent(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', file.name.split('.')[0]);
+    formData.append('description', 'Uploaded course material');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/courses/${courseId}/content`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      toast.success("Content uploaded successfully");
+      loadData();
+    } catch (err) {
+      toast.error("Failed to upload content");
+    } finally {
+      setUploadingContent(false);
+    }
+  };
+
+  const deleteContent = async (contentId: number) => {
+    if (!window.confirm("Are you sure you want to delete this content?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/teacher/courses/${courseId}/content/${contentId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      toast.success("Content deleted successfully");
+      loadData();
+    } catch (err) {
+      toast.error("Failed to delete content");
     }
   };
 
@@ -404,52 +458,126 @@ export default function ManageCourse() {
               </p>
             </div>
 
-            {/* RIGHT: CURRICULUM OVERVIEW */}
+            {/* RIGHT: CURRICULUM & MATERIALS OVERVIEW */}
             <div className="lg:col-span-4 space-y-6">
               <Card className="sticky top-24 border-none shadow-lg">
-                <CardHeader className="border-b bg-muted/10">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">Curriculum</CardTitle>
-                    <Badge variant="secondary">{lectures.length} Total</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="max-h-[70vh] overflow-y-auto divide-y">
-                    {lectures.map((l) => (
-                      <div key={l.id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between group">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-primary/5 flex items-center justify-center text-primary text-xs font-bold shrink-0">
-                            {l.lecture_order}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold truncate max-w-[150px]">{l.title}</p>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {l.is_interactive && <Badge variant="accent" className="text-[8px] px-1 py-0 h-3">Interactive</Badge>}
-                              {l.ai_summary ? (
-                                <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3 bg-success/10 text-success border-success/20">Summary Ready</Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-[8px] px-1 py-0 h-3 opacity-50">No Summary</Badge>
-                              )}
-                              <p className="text-[10px] text-muted-foreground">{l.video_type === 'local' ? 'Uploaded' : 'URL'}</p>
+                <Tabs defaultValue="lectures" className="w-full">
+                  <CardHeader className="border-b bg-muted/10 pb-0">
+                    <TabsList className="w-full bg-transparent p-0 mb-4 h-auto border-b">
+                      <TabsTrigger 
+                        value="lectures" 
+                        className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-2"
+                      >
+                        Lectures <Badge variant="secondary" className="ml-2">{lectures.length}</Badge>
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="materials" 
+                        className="flex-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-2"
+                      >
+                        Materials <Badge variant="secondary" className="ml-2">{courseContents.length}</Badge>
+                      </TabsTrigger>
+                    </TabsList>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <TabsContent value="lectures" className="m-0 border-none outline-none">
+                      <div className="max-h-[70vh] overflow-y-auto divide-y">
+                        {lectures.map((l) => (
+                          <div key={l.id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between group">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-primary/5 flex items-center justify-center text-primary text-xs font-bold shrink-0">
+                                {l.lecture_order}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold truncate max-w-[150px]">{l.title}</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {l.is_interactive && <Badge variant="accent" className="text-[8px] px-1 py-0 h-3">Interactive</Badge>}
+                                  {l.ai_summary ? (
+                                    <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3 bg-success/10 text-success border-success/20">Summary Ready</Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-[8px] px-1 py-0 h-3 opacity-50">No Summary</Badge>
+                                  )}
+                                  <p className="text-[10px] text-muted-foreground">{l.video_type === 'local' ? 'Uploaded' : 'URL'}</p>
+                                </div>
+                              </div>
                             </div>
+                            <Button 
+                              variant="ghost" size="xs" 
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => deleteLecture(l.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        ))}
+                        {lectures.length === 0 && (
+                          <div className="p-12 text-center text-xs text-muted-foreground">
+                            No lectures yet
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="materials" className="m-0 border-none outline-none">
+                      <div className="p-4 border-b bg-muted/5">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 relative">
+                            <Input 
+                              type="file" 
+                              onChange={handleContentUpload} 
+                              disabled={uploadingContent} 
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              accept=".pdf,.doc,.docx,.ppt,.pptx,.txt"
+                            />
+                            <Button className="w-full" variant="outline" disabled={uploadingContent}>
+                              {uploadingContent ? (
+                                <><Clock className="h-4 w-4 mr-2 animate-spin" /> Uploading...</>
+                              ) : (
+                                <><Upload className="h-4 w-4 mr-2" /> Upload Material</>
+                              )}
+                            </Button>
                           </div>
                         </div>
-                        <Button 
-                          variant="ghost" size="xs" 
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => deleteLecture(l.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
+                        <p className="text-[10px] text-muted-foreground mt-2 text-center">PDF, DOC, PPT (Max 50MB)</p>
                       </div>
-                    ))}
-                    {lectures.length === 0 && (
-                      <div className="p-12 text-center text-xs text-muted-foreground">
-                        No lectures yet
+                      
+                      <div className="max-h-[60vh] overflow-y-auto divide-y">
+                        {courseContents.map((content) => (
+                          <div key={content.id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between group">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center text-info shrink-0">
+                                <FileText className="h-4 w-4" />
+                              </div>
+                              <div className="truncate">
+                                <p className="text-sm font-semibold truncate max-w-[150px]" title={content.file_name}>{content.file_name}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {new Date(content.created_at).toLocaleDateString()} • {(content.file_size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <a href={content.file_url} target="_blank" rel="noopener noreferrer">
+                                <Button variant="ghost" size="xs">
+                                  <Upload className="h-3.5 w-3.5 rotate-180 text-primary" />
+                                </Button>
+                              </a>
+                              <Button 
+                                variant="ghost" size="xs" 
+                                onClick={() => deleteContent(content.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                        {courseContents.length === 0 && (
+                          <div className="p-12 text-center text-xs text-muted-foreground">
+                            No materials uploaded yet
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </CardContent>
+                    </TabsContent>
+                  </CardContent>
+                </Tabs>
               </Card>
             </div>
 
