@@ -29,7 +29,18 @@ if (process.env.REDIS_URL || process.env.USE_REDIS === 'true') {
 }
 
 app.use(cors({
-  origin: ["https://edulinkx.jayantsadhwani.me", "https://edulink-x.vercel.app", "http://localhost:5173"],
+  origin: function (origin, callback) {
+    if (!origin || origin === 'null') return callback(null, true);
+    if (
+      origin.endsWith('jayantsadhwani.me') || 
+      origin.endsWith('vercel.app') || 
+      origin.startsWith('http://localhost')
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed by origin: ' + origin));
+    }
+  },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
